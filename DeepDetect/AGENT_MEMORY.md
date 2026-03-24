@@ -77,6 +77,7 @@
 ## 最近更新记录
 | 日期 | 更新内容 | 状态 |
 |------|---------|------|
+| 2026-03-24 | 在线数据调试测试：Autoencoder + DetectVisualizer 验证通过，生成 dd_test_anomaly.png 和 dd_test_scores.png | ✅ 完成 |
 | 2026-03-24 | v1.3 新增可视化模块 `src/visualizer.py`（DetectVisualizer 类）+ 异常区间可视化 Tab | ✅ 完成 |
 | 2026-03-24 | v1.2 torch 2.2.0 → 2.5.0 升级（CPU版正常）+ Autoencoder 效率优化（早停/BatchNorm/LR调度） | ✅ 完成 |
 | 2026-03-24 | 独立调试测试（dd_temp_anomaly.csv，7267行）：全部7种检测器通过 | ✅ 完成 |
