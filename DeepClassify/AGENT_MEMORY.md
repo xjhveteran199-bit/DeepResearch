@@ -7,7 +7,7 @@
 
 ## 模块基本信息
 - **模块路径**：`C:\Users\XJH\DeepResearch\DeepClassify\`
-- **版本**：v1.0（2026-03-24）
+- **版本**：v1.1（2026-03-24）
 - **定位**：信号/数据分类，CNN1D/RF/GB/SVM 四种分类器
 - **Git 远程**：`https://github.com/xjhveteran199-bit/DeepResearch`
 
@@ -15,23 +15,38 @@
 - CNN1D 分类器（PyTorch）：Conv1D×2 + BatchNorm + GlobalAvgPool
 - RandomForest / GradientBoosting / SVM 分类器
 - Accuracy / F1 / Confusion Matrix / ROC-AUC
+- **新增**：K-Fold 交叉验证（StratifiedKFold，K=1~10可调）
+- **新增**：SHAP 可解释性（TreeExplainer for RF/GB, KernelExplainer for CNN1D/SVM）
+- **新增**：GB 后端选择（sklearn/LightGBM/XGBoost/auto）
+- **新增**：模型对比功能（同时训练并比较所有模型）
 - Web 界面：Gradio（端口7861独立运行）
 
 ## 技术栈
 - Python 3.12 + PyTorch 2.2.0 + scikit-learn + Gradio 6.9.0
-- numpy 1.26.4（注意：torch 2.2.0 需要 numpy < 2.0）
+- numpy 1.26.4 + shap 0.51.0 + lightgbm 4.6.0
+- **注意**：torch 2.2.0 需要 numpy < 2.0，shap 0.51.0 也兼容 numpy 1.26.4（无需强制升级）
+
+## 环境说明（重要）
+- torch 2.11.0+ 无法在此机器上加载 DLL（Windows 10 18362，VC++ runtime 14.14 太旧）
+- torch 2.2.0+cpu 是目前可用版本，与 numpy 1.26.4 兼容
+- SHAP 0.51.0 可与 numpy 1.26.4 共存（不需要 numpy>=2）
+- **升级 torch 的方法**：关闭所有 Python 进程后，在新的 PowerShell 窗口执行：
+  ```
+  pip install torch==2.2.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu --force-reinstall
+  ```
 
 ## 已知问题
-- SHAP 分析依赖 shap 0.51.0，但 shap 0.51.0 要求 numpy>=2，与 torch 2.2.0 冲突
-- CNN1D 的 torch 导入需在 numpy < 2 环境下
+- SHAP DeepExplainer（torch）不可用：torch 2.2.0 与 shap 0.51.0 的组合在当前环境测试 SHAP TreeExplainer 正常工作
+- SHAP KernelExplainer 用于 CNN1D（慢但可用）：`shap.KernelExplainer(predict_fn, background)`
 
 ## 迭代 Roadmap
-1. 解决 SHAP 与 torch 的 numpy 版本冲突（建议升级 torch 到 2.4+）
-2. 增加多分类 ROC 曲线支持
-3. 增加交叉验证（K-Fold CV）
-4. 增加 SHAP 可解释性（解决版本冲突后）
-5. 增加模型对比仪表盘
-6. API 服务化（FastAPI）
+- [x] 解决 SHAP 与 torch 的 numpy 版本冲突（通过验证：shap 0.51.0 兼容 numpy 1.26.4）
+- [x] 增加 LightGBM 作为 GB 分类器的后端选项
+- [x] 增加 K-Fold 交叉验证
+- [x] 增加模型对比功能
+- [ ] 增加 SHAP beeswarm 决策图（可优化）
+- [ ] CNN1D 小数据集稳定性改善（数据增强、dropout 调整）
+- [ ] API 服务化（FastAPI）
 
 ## 汇报模板
 每次汇报请包含：
@@ -47,11 +62,4 @@
 - 功能测试：✅/❌
 
 ### 下一步计划
-
-### 问题/需要协助
 ```
-
-## 最近更新记录
-| 日期 | 更新内容 | 状态 |
-|------|---------|------|
-| 2026-03-24 | v1.0 初始版本，CNN1D/RF/GB/SVM 四种分类器 | ✅ 完成 |

@@ -163,21 +163,21 @@ def on_model_select(model_name):
 
 
 # ============ Tab 4: 训练 ============
-def on_train(model_name, test_size,
+def on_train(model_name, test_size, kfold,
              # CNN1D params
              cnn_hidden, cnn_kernel, cnn_epochs, cnn_lr, cnn_bs,
              # RF params
              rf_trees, rf_depth,
              # GB params
-             gb_trees, gb_depth, gb_lr,
+             gb_trees, gb_depth, gb_lr, gb_backend,
              # SVM params
              svm_c, svm_kernel):
     """执行训练"""
     if state.data_loader is None:
-        return "❌ 请先加载数据", gr.update(), gr.update(), gr.update(), gr.update()
+        return "❌ 请先加载数据", gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
     if state.X_features is None or state.y_target is None:
-        return "❌ 请选择特征和目标列", gr.update(), gr.update(), gr.update(), gr.update()
+        return "❌ 请选择特征和目标列", gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
     # 获取编码后的标签
     y_enc, le = state.data_loader.get_target_encoded()
@@ -209,6 +209,7 @@ def on_train(model_name, test_size,
             'n_estimators': int(gb_trees),
             'max_depth': int(gb_depth),
             'learning_rate': float(gb_lr),
+            'backend': str(gb_backend),
         }
         classifier = GBClassifier(**params)
     elif model_name == "SVM":
@@ -218,7 +219,7 @@ def on_train(model_name, test_size,
         }
         classifier = SVMClassifier(**params)
     else:
-        return f"❌ 未知模型: {model_name}", gr.update(), gr.update(), gr.update(), gr.update()
+        return f"❌ 未知模型: {model_name}", gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
     state.classifier = classifier
 
@@ -231,15 +232,49 @@ def on_train(model_name, test_size,
     )
 
     if not ok:
-        return f"❌ {msg}", gr.update(), gr.update(), gr.update(), gr.update()
+        return f"❌ {msg}", gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
 
     # 计算详细指标
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import train_test_split, StratifiedKFold
     from src.core.metrics import ClassificationMetrics
 
     X_arr = state.X_features.values.astype(np.float32)
     y_arr = y_enc.values
 
+    # K-Fold 交叉验证
+    kfold_msg = ""
+    kfold_html = ""
+    if kfold > 1:
+        skf = StratifiedKFold(n_splits=int(kfold), shuffle=True, random_state=42)
+        fold_scores = {'Accuracy': [], 'F1_weighted': [], 'Precision_weighted': [], 'Recall_weighted': []}
+        for fold_idx, (tr_idx, val_idx) in enumerate(skf.split(X_arr, y_arr)):
+            X_tr, X_val = X_arr[tr_idx], X_arr[val_idx]
+            y_tr, y_val = y_arr[tr_idx], y_arr[val_idx]
+            # 克隆分类器
+            fold_clf = _clone_classifier(model_name, locals())
+            fold_clf.fit(state.X_features.iloc[tr_idx], pd.Series(y_tr))
+            y_pred_fold = fold_clf.predict(X_val)
+            y_proba_fold = fold_clf.predict_proba(X_val)
+            mc_fold = ClassificationMetrics()
+            m_fold = mc_fold.compute(y_val, y_pred_fold, y_proba_fold, labels=list(range(len(state.class_names))))
+            fold_scores['Accuracy'].append(m_fold.get('Accuracy', 0))
+            fold_scores['F1_weighted'].append(m_fold.get('F1_weighted', 0))
+            fold_scores['Precision_weighted'].append(m_fold.get('Precision_weighted', 0))
+            fold_scores['Recall_weighted'].append(m_fold.get('Recall_weighted', 0))
+
+        # K-Fold 均值
+        kfold_lines = ["<table style='border-collapse:collapse; width:100%;'>",
+                       "<caption><b>K-Fold 交叉验证结果 (K={})</b></caption>".format(kfold),
+                       "<tr><th>指标</th><th>均值</th><th>标准差</th></tr>"]
+        for metric, vals in fold_scores.items():
+            mean_v = np.mean(vals)
+            std_v = np.std(vals)
+            kfold_lines.append(f"<tr><td>{metric}</td><td>{mean_v:.4f}</td><td>{std_v:.4f}</td></tr>")
+        kfold_lines.append("</table>")
+        kfold_html = "\n".join(kfold_lines)
+        kfold_msg = f"✅ {kfold}-Fold CV 完成"
+
+    # 测试集评估
     X_tr, X_te, y_tr, y_te = train_test_split(
         X_arr, y_arr, test_size=float(test_size), random_state=42
     )
@@ -272,9 +307,261 @@ def on_train(model_name, test_size,
     save_path = str(APP_ROOT / "deepclassify_model.pkl")
     classifier.save(save_path)
 
-    return msg, metrics_html, cm_html, roc_fig, save_path
+    return msg, metrics_html, cm_html, roc_fig, save_path, kfold_html
 
 
+def _clone_classifier(model_name, local_vars):
+    """克隆分类器（用于K-Fold）"""
+    from src.models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
+    if model_name == "CNN1D":
+        return CNN1DClassifyWrapper(
+            hidden_channels=int(local_vars.get('cnn_hidden', 64)),
+            kernel_size=int(local_vars.get('cnn_kernel', 3)),
+            epochs=int(local_vars.get('cnn_epochs', 10)),
+            learning_rate=float(local_vars.get('cnn_lr', 0.001)),
+            batch_size=int(local_vars.get('cnn_bs', 32)),
+        )
+    elif model_name == "RandomForest":
+        rf_depth = int(local_vars.get('rf_depth', 10))
+        return RFClassifier(
+            n_estimators=int(local_vars.get('rf_trees', 100)),
+            max_depth=rf_depth if rf_depth > 0 else None,
+        )
+    elif model_name == "GradientBoosting":
+        return GBClassifier(
+            n_estimators=int(local_vars.get('gb_trees', 100)),
+            max_depth=int(local_vars.get('gb_depth', 5)),
+            learning_rate=float(local_vars.get('gb_lr', 0.1)),
+            backend=str(local_vars.get('gb_backend', 'auto')),
+        )
+    elif model_name == "SVM":
+        return SVMClassifier(
+            C=float(local_vars.get('svm_c', 1.0)),
+            kernel=str(local_vars.get('svm_kernel', 'rbf')),
+        )
+    raise ValueError(f"Unknown model: {model_name}")
+
+
+# ============ SHAP 分析 ============
+def on_shar_analysis():
+    """执行 SHAP 可解释性分析"""
+    if state.classifier is None:
+        return "❌ 请先训练模型", gr.update(visible=False)
+
+    try:
+        import shap
+        X_arr = state.X_features.values.astype(np.float32)
+
+        # 取少量样本作为背景
+        n_bg = min(50, len(X_arr) // 2)
+        background = X_arr[:n_bg]
+        test_sample = X_arr[n_bg:n_bg + 10]
+
+        # 获取预测函数
+        def predict_fn(x):
+            return state.classifier.predict_proba(x)
+
+        model_type = type(state.classifier).__name__
+        shap_html = ""
+        shap_fig = None
+
+        if model_type in ('RFClassifier', 'GBClassifier'):
+            # 树模型使用 TreeExplainer
+            explainer = shap.TreeExplainer(state.classifier._model)
+            shap_values = explainer.shap_values(test_sample)
+            if isinstance(shap_values, list):
+                shap_vals = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+            else:
+                shap_vals = shap_values
+            # 绘制 beeswarm
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(8, 5))
+            shap.summary_plot(shap_vals, test_sample, feature_names=list(state.X_features.columns),
+                             show=False, plot_size=None)
+            shap_fig = fig
+            # HTML 摘要
+            feat_imp = state.classifier.get_feature_importance()
+            rows = sorted(feat_imp.items(), key=lambda x: x[1], reverse=True)
+            rows_html = "".join([f"<tr><td>{k}</td><td>{v:.4f}</td></tr>" for k, v in rows])
+            shap_html = (
+                "<table style='border-collapse:collapse; width:100%;'>"
+                "<caption><b>SHAP 特征重要性 (TreeExplainer)</b></caption>"
+                "<tr><th>特征</th><th>SHAP 重要性</th></tr>"
+                + rows_html + "</table>"
+            )
+        else:
+            # 其他模型（CNN1D, SVM）使用 KernelExplainer
+            explainer = shap.KernelExplainer(predict_fn, background)
+            shap_values = explainer.shap_values(test_sample, nsamples=50)
+            if isinstance(shap_values, list):
+                shap_vals = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+            else:
+                shap_vals = shap_values
+
+            # 绘制 beeswarm
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(8, 5))
+            try:
+                shap.summary_plot(shap_vals, test_sample,
+                                  feature_names=list(state.X_features.columns),
+                                  show=False, plot_size=None)
+                shap_fig = fig
+            except Exception:
+                shap_fig = None
+
+            # 简单的特征重要性（基于SHAP值绝对值的均值）
+            mean_abs = np.abs(shap_vals).mean(axis=0)
+            feat_names = list(state.X_features.columns)
+            rows = sorted(zip(feat_names, mean_abs), key=lambda x: x[1], reverse=True)
+            rows_html = "".join([f"<tr><td>{k}</td><td>{v:.4f}</td></tr>" for k, v in rows])
+            shap_html = (
+                "<table style='border-collapse:collapse; width:100%;'>"
+                "<caption><b>SHAP 特征重要性 (KernelExplainer)</b></caption>"
+                "<tr><th>特征</th><th>Mean |SHAP|</th></tr>"
+                + rows_html + "</table>"
+            )
+
+        # 保存 SHAP 图
+        if shap_fig is not None:
+            import matplotlib.pyplot as plt
+            shap_path = APP_ROOT / "shap_summary.png"
+            shap_fig.savefig(shap_path, bbox_inches='tight', dpi=150)
+            plt.close(shap_fig)
+            shap_plot_html = f"<img src='file/{shap_path}' width='100%'/>"
+        else:
+            shap_plot_html = ""
+
+        result = f"✅ SHAP 分析完成！\n模型: {model_type}\n样本: {len(test_sample)}"
+        return result, gr.update(value=shap_plot_html, visible=True)
+
+    except ImportError as e:
+        return f"⚠️ SHAP 库未安装或版本不兼容: {str(e)[:100]}", gr.update(visible=False)
+    except Exception as e:
+        import traceback
+        logger.error(traceback.format_exc())
+        return f"❌ SHAP 分析失败: {str(e)[:200]}", gr.update(visible=False)
+
+
+# ============ 模型对比 ============
+def on_compare_all(test_size, kfold):
+    """训练并对比所有模型"""
+    if state.data_loader is None:
+        return "❌ 请先加载数据", gr.update()
+    if state.X_features is None:
+        return "❌ 请先选择特征和标签", gr.update()
+
+    y_enc, le = state.data_loader.get_target_encoded()
+    state.class_names = list(le.classes_)
+    X_arr = state.X_features.values.astype(np.float32)
+    y_arr = y_enc.values
+
+    from src.models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
+    from sklearn.model_selection import StratifiedKFold
+    from src.core.metrics import ClassificationMetrics
+
+    models_config = [
+        ("CNN1D", CNN1DClassifyWrapper(hidden_channels=64, kernel_size=3, epochs=30,
+                                       learning_rate=0.001, batch_size=32)),
+        ("RandomForest", RFClassifier(n_estimators=50, max_depth=10)),
+        ("GradientBoosting(GB)", GBClassifier(n_estimators=50, max_depth=5,
+                                               learning_rate=0.1, backend='sklearn')),
+        ("SVM(RBF)", SVMClassifier(C=1.0, kernel='rbf')),
+    ]
+
+    results = []
+    for name, clf in models_config:
+        try:
+            # K-Fold CV
+            if kfold > 1:
+                skf = StratifiedKFold(n_splits=int(kfold), shuffle=True, random_state=42)
+                acc_list, f1_list = [], []
+                for tr_idx, val_idx in skf.split(X_arr, y_arr):
+                    fold_clf = _clone_from_name(name)
+                    fold_clf.fit(state.X_features.iloc[tr_idx], pd.Series(y_arr[tr_idx]))
+                    y_p = fold_clf.predict(X_arr[val_idx])
+                    mc = ClassificationMetrics()
+                    m = mc.compute(y_arr[val_idx], y_p,
+                                   fold_clf.predict_proba(X_arr[val_idx]),
+                                   labels=list(range(len(state.class_names))))
+                    acc_list.append(m.get('Accuracy', 0))
+                    f1_list.append(m.get('F1_weighted', 0))
+                cv_acc = np.mean(acc_list)
+                cv_f1 = np.mean(f1_list)
+                cv_std = np.std(acc_list)
+            else:
+                cv_acc = cv_f1 = cv_std = 0.0
+
+            # 最终训练 + 测试评估
+            clf.fit(state.X_features, pd.Series(y_arr))
+            from sklearn.model_selection import train_test_split
+            X_tr, X_te, y_tr, y_te = train_test_split(
+                X_arr, y_arr, test_size=float(test_size), random_state=42)
+            y_pred = clf.predict(X_te)
+            y_proba = clf.predict_proba(X_te)
+            mc = ClassificationMetrics()
+            m = mc.compute(y_te, y_pred, y_proba,
+                          labels=list(range(len(state.class_names))))
+
+            results.append({
+                'Model': name,
+                'CV_Acc': f"{cv_acc:.4f}" if cv_acc else "-",
+                'CV_F1': f"{cv_f1:.4f}" if cv_f1 else "-",
+                'CV_Std': f"{cv_std:.4f}" if cv_std else "-",
+                'Test_Acc': f"{m.get('Accuracy', 0):.4f}",
+                'Test_F1': f"{m.get('F1_weighted', 0):.4f}",
+                'Test_AUC': f"{m.get('ROC_AUC', m.get('ROC_AUC_micro', 0)):.4f}",
+            })
+        except Exception as e:
+            results.append({
+                'Model': name,
+                'CV_Acc': 'ERROR', 'CV_F1': 'ERROR', 'CV_Std': 'ERROR',
+                'Test_Acc': 'ERROR', 'Test_F1': 'ERROR', 'Test_AUC': 'ERROR',
+                '_error': str(e)
+            })
+
+    # 生成对比 HTML 表格
+    df_res = pd.DataFrame(results)
+    # 排序（按 Test_F1 降序，排除 ERROR 行）
+    try:
+        df_res['_sort'] = df_res['Test_F1'].apply(
+            lambda x: float(x) if x not in ('ERROR', '-') else -1)
+        df_res = df_res.sort_values('_sort', ascending=False).drop('_sort', axis=1)
+    except Exception:
+        pass
+
+    col_labels = ['Model', 'CV_Acc', 'CV_F1', 'CV_Std', 'Test_Acc', 'Test_F1', 'Test_AUC']
+    headers = "<tr>" + "".join([f"<th>{c}</th>" for c in col_labels]) + "</tr>"
+    rows_html = ""
+    for _, row in df_res.iterrows():
+        cells = "".join([f"<td>{row.get(c, '')}</td>" for c in col_labels])
+        rows_html += f"<tr>{cells}</tr>"
+
+    comparison_html = (
+        "<table style='border-collapse:collapse; width:100%; font-size:13px;'>"
+        "<caption><b>模型对比结果 (K={}, Test={})</b></caption>".format(kfold, test_size)
+        + headers + rows_html + "</table>"
+    )
+
+    summary = f"✅ 模型对比完成！共 {len(results)} 个模型"
+    return summary, gr.update(value=comparison_html, visible=True)
+
+
+def _clone_from_name(name):
+    """根据模型名称克隆分类器"""
+    from src.models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
+    if name == "CNN1D":
+        return CNN1DClassifyWrapper(hidden_channels=64, kernel_size=3, epochs=30,
+                                    learning_rate=0.001, batch_size=32)
+    elif name == "RandomForest":
+        return RFClassifier(n_estimators=50, max_depth=10)
+    elif "GB" in name:
+        return GBClassifier(n_estimators=50, max_depth=5, learning_rate=0.1, backend='sklearn')
+    elif "SVM" in name:
+        return SVMClassifier(C=1.0, kernel='rbf')
+    raise ValueError(f"Unknown model: {name}")
+
+
+# ============ 辅助绘图函数 ============
 def _cm_to_html(cm, labels):
     """混淆矩阵转 HTML 表格"""
     header = "<tr><th></th>" + "".join([f"<th>{l}</th>" for l in labels]) + "</tr>"
@@ -519,6 +806,13 @@ def build_ui():
                         gb_trees = gr.Number(label="树数量", value=100)
                         gb_depth = gr.Number(label="最大深度", value=5)
                         gb_lr = gr.Number(label="学习率", value=0.1)
+                    with gr.Row():
+                        gb_backend = gr.Dropdown(
+                            label="后端引擎",
+                            choices=['auto', 'sklearn', 'lgbm', 'xgb'],
+                            value='auto',
+                            info="auto: 自动选择 (优先 XGBoost→LightGBM→sklearn)"
+                        )
 
                 # SVM 参数
                 with gr.Group(visible=False) as svm_group:
@@ -542,9 +836,14 @@ def build_ui():
                 with gr.Row():
                     with gr.Column():
                         train_btn = gr.Button("🚀 开始训练", variant="primary", size="lg")
+                        kfold = gr.Slider(1, 10, value=1, step=1,
+                                          label="K-Fold 交叉验证 (1=禁用)", info="K=1表示不使用交叉验证")
+                        compare_btn = gr.Button("⚖️ 对比所有模型", variant="secondary")
+                        shap_btn = gr.Button("📊 SHAP 可解释性", variant="secondary")
                         download_file = gr.File(label="💾 下载模型文件", visible=False)
                     with gr.Column():
                         train_msg = gr.Textbox(label="训练结果", lines=5, interactive=False)
+                        shap_msg = gr.Textbox(label="SHAP 结果", lines=3, interactive=False)
 
                 gr.Markdown("---")
                 gr.Markdown("**评估结果**")
@@ -553,18 +852,38 @@ def build_ui():
                         metrics_display = gr.HTML(label="指标")
                     with gr.Column(scale=1):
                         cm_display = gr.HTML(label="混淆矩阵")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        kfold_display = gr.HTML(label="K-Fold 结果", visible=True)
+                    with gr.Column(scale=1):
+                        shap_plot = gr.HTML(label="SHAP Summary Plot", visible=False)
                 roc_plot = gr.Plot(label="ROC 曲线")
+
+                # 对比表格
+                compare_display = gr.HTML(label="模型对比结果", visible=False)
 
                 train_btn.click(
                     fn=on_train,
                     inputs=[
-                        model_name, test_size,
+                        model_name, test_size, kfold,
                         cnn_hidden, cnn_kernel, cnn_epochs, cnn_lr, cnn_bs,
                         rf_trees, rf_depth,
-                        gb_trees, gb_depth, gb_lr,
+                        gb_trees, gb_depth, gb_lr, gb_backend,
                         svm_c, svm_kernel
                     ],
-                    outputs=[train_msg, metrics_display, cm_display, roc_plot, download_file]
+                    outputs=[train_msg, metrics_display, cm_display, roc_plot, download_file, kfold_display]
+                )
+
+                shap_btn.click(
+                    fn=on_shar_analysis,
+                    inputs=[],
+                    outputs=[shap_msg, shap_plot]
+                )
+
+                compare_btn.click(
+                    fn=on_compare_all,
+                    inputs=[test_size, kfold],
+                    outputs=[train_msg, compare_display]
                 )
 
                 download_file.change(
