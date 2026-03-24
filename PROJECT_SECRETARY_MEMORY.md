@@ -25,6 +25,26 @@
 | DeepClassify-Agent | agent:main:subagent:8c9d6116 | DeepClassify全职迭代 |
 | DeepDetect-Agent | agent:main:subagent:b5f67e99 | DeepDetect全职迭代 |
 
+## 定时汇报职责（新增）
+**每2小时自动执行一次**，接管原本由主Agent执行的定时检查。
+
+汇报前检查：
+1. 读取 `PROJECT_LOG.md` 了解历史
+2. 读取 `DeepClassify/AGENT_MEMORY.md` 和 `DeepDetect/AGENT_MEMORY.md`
+3. 检查统一网站进程（端口 7862）
+4. 检查 GitHub 同步状态
+5. 如有重大更新，追加到 `PROJECT_LOG.md`
+
+汇报格式：
+```
+## Deep-Research 定时汇报
+时间：[当前时间]
+DeepClassify：[状态/进展]
+DeepDetect：[状态/进展]
+网站：[运行中/已停止]
+GitHub：[已同步/待推送]
+```
+
 ## 报告生成规则
 **每次生成报告前，必须先读取 `PROJECT_LOG.md`（历史记录），在此基础上更新。**
 
