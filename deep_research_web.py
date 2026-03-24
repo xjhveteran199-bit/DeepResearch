@@ -373,111 +373,103 @@ def build_deep_predict_ui():
                 predict_btn = gr.Button("🔮 预测新数据", variant="secondary")
 
         # ===== 状态 =====
-        dp_loader = DPDataLoader()
-        dp_predictor = DPPredictor()
-        dp_state = gr.State({"loader": dp_loader, "predictor": dp_predictor, "X_cols": [], "y_col": None})
+        # ===== 全局状态（Gradio 6.x 兼容性：避免 gr.State 的 subscript 问题）=====
+        global _dp_loader, _dp_predictor, _dp_x_cols, _dp_y_col
+        _dp_loader = DPDataLoader()
+        _dp_predictor = DPPredictor()
+        _dp_x_cols = []
+        _dp_y_col = None
 
-        # ===== 事件绑定 =====
+        # ===== 事件绑定（直接操作全局变量，无 gr.State）=====
         def on_load(file_obj):
+            global _dp_loader, _dp_x_cols
             if file_obj is None:
-                return "请上传 CSV 文件", gr.update(choices=[]), gr.update(choices=[]), gr.update(), dp_state
+                return "请上传 CSV 文件", gr.update(choices=[]), gr.update(choices=[]), gr.update()
             path = _extract_path(file_obj)
             if not path:
-                return "❌ 无法读取文件", gr.update(choices=[]), gr.update(choices=[]), gr.update(), dp_state
-            success, msg = dp_loader.load(path)
+                return "❌ 无法读取文件", gr.update(choices=[]), gr.update(choices=[]), gr.update()
+            success, msg = _dp_loader.load(path)
             if not success:
-                return msg, gr.update(choices=[]), gr.update(choices=[]), gr.update(), dp_state
-            choices = dp_loader.all_cols
-            preview = dp_loader.get_preview()
-            info = dp_loader.get_info()
-            return info, gr.update(choices=choices), gr.update(choices=choices), preview, dp_state
+                return msg, gr.update(choices=[]), gr.update(choices=[]), gr.update()
+            _dp_x_cols = []
+            choices = _dp_loader.all_cols
+            preview = _dp_loader.get_preview()
+            info = _dp_loader.get_info()
+            return info, gr.update(choices=choices), gr.update(choices=choices, value=None), preview
 
         load_btn.click(on_load, inputs=[file_input],
-                       outputs=[data_info, x_cols, y_col, preview_table, dp_state])
+                       outputs=[data_info, x_cols, y_col, preview_table])
 
-        def on_x_selected(choices, state):
-            state["X_cols"] = choices
-            return state
+        def on_x_selected(choices):
+            global _dp_x_cols
+            _dp_x_cols = list(choices) if choices else []
+            return
 
-        x_cols.change(on_x_selected, inputs=[x_cols, dp_state], outputs=[dp_state])
+        x_cols.change(on_x_selected, inputs=[x_cols], outputs=[])
 
-        def on_y_selected(value, state):
-            state["y_col"] = value
-            return state
+        def on_y_selected(value):
+            global _dp_y_col
+            _dp_y_col = value
+            return
 
-        y_col.change(on_y_selected, inputs=[y_col, dp_state], outputs=[dp_state])
+        y_col.change(on_y_selected, inputs=[y_col], outputs=[])
 
-        def on_train(model_name, test_size, state):
-            loader = state["loader"]
-            predictor = state["predictor"]
-            x_cols = state["X_cols"]
-            y_col = state["y_col"]
+        def on_train(model_name, test_size):
+            global _dp_loader, _dp_predictor, _dp_x_cols, _dp_y_col
 
-            if not x_cols or not y_col:
-                return "❌ 请先选择特征列和目标列", {}, gr.update(), state
+            if not _dp_x_cols or not _dp_y_col:
+                return "❌ 请先选择 X 特征列和 Y 目标列", {}, gr.update()
+            if _dp_loader.df is None:
+                return "❌ 请先加载数据", {}, gr.update()
 
-            if loader.df is None:
-                return "❌ 请先加载数据", {}, gr.update(), state
+            X_df = _dp_loader.df[_dp_x_cols]
+            y_series = _dp_loader.df[_dp_y_col]
 
-            X_df = loader.df[x_cols]
-            y_series = loader.df[y_col]
-
-            # 自动调整 LSTM/PatchTST 参数
             params = {}
             if model_name == 'LSTM':
-                n = len(loader.df)
+                n = len(_dp_loader.df)
                 params['seq_len'] = min(50, max(5, n // 10))
                 params['hidden_size'] = 64
                 params['num_layers'] = 2
                 params['epochs'] = 30
             elif model_name == 'PatchTST':
-                n = len(loader.df)
+                n = len(_dp_loader.df)
                 params['seq_len'] = min(96, max(12, n // 5))
                 params['pred_len'] = params['seq_len'] // 2
                 params['epochs'] = 20
 
-            success, msg = predictor.train(X_df, y_series, y_col, model_name, params, test_size)
+            success, msg = _dp_predictor.train(X_df, y_series, _dp_y_col, model_name, params, float(test_size))
             if not success:
-                return msg, {}, gr.update(), state
+                return msg, {}, gr.update()
+            fig = _plot_results(_dp_predictor, X_df, y_series, _dp_y_col)
+            return msg, _dp_predictor.metrics, fig
 
-            # 绘图
-            fig = _plot_results(predictor, X_df, y_series, y_col)
-            metrics = predictor.metrics
-            return msg, metrics, fig, state
+        train_btn.click(on_train, inputs=[model_choice, test_size],
+                        outputs=[data_info, metrics_output, result_plot])
 
-        train_btn.click(on_train, inputs=[model_choice, test_size, dp_state],
-                        outputs=[data_info, metrics_output, result_plot, dp_state])
-
-        def on_shap(state):
-            predictor = state["predictor"]
-            loader = state["loader"]
-            if not predictor.is_fitted:
-                return "⚠️ 请先训练模型", None, None, state
-            X_df = loader.df[state["X_cols"]]
-            figs, report = predictor.run_shap_analysis(X_df)
+        def on_shap():
+            global _dp_loader, _dp_predictor, _dp_x_cols
+            if not _dp_predictor.is_fitted:
+                return "⚠️ 请先训练模型", None, None
+            X_df = _dp_loader.df[_dp_x_cols]
+            figs, report = _dp_predictor.run_shap_analysis(X_df)
             if figs is None:
-                return report, None, None, state
-            imp_img = figs.get('importance')
-            bee_img = figs.get('beeswarm')
-            return report, imp_img, bee_img, state
+                return report, None, None
+            return report, figs.get('importance'), figs.get('beeswarm')
 
-        shap_btn.click(on_shap, inputs=[dp_state],
-                       outputs=[shap_output, shap_plot_importance, shap_plot_beeswarm, dp_state])
+        shap_btn.click(on_shap, inputs=[],
+                       outputs=[shap_output, shap_plot_importance, shap_plot_beeswarm])
 
-        def on_download(state):
-            predictor = state["predictor"]
-            loader = state["loader"]
-            if not predictor.is_fitted:
+        def on_download():
+            global _dp_loader, _dp_predictor, _dp_x_cols, _dp_y_col
+            if not _dp_predictor.is_fitted:
                 return None
-            X_df = loader.df[state["X_cols"]]
-            y_series = loader.df[state["y_col"]]
-            preds = predictor.predict(X_df)
-            buf = predictor.download_package(X_df, y_series, preds)
-            return buf
+            X_df = _dp_loader.df[_dp_x_cols]
+            y_series = _dp_loader.df[_dp_y_col]
+            preds = _dp_predictor.predict(X_df)
+            return _dp_predictor.download_package(X_df, y_series, preds)
 
-        download_btn.click(on_download, inputs=[dp_state], outputs=[download_file])
-
-        return dp_state
+        download_btn.click(on_download, inputs=[], outputs=[download_file])
 
 
 # ============================================================
@@ -1126,7 +1118,7 @@ def main():
 
     app.launch(
         server_name="0.0.0.0",
-        server_port=7860,
+        server_port=7862,
         share=False,
         show_error=True,
         theme=gr.themes.Glass(),
