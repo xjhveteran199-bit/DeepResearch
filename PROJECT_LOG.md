@@ -61,6 +61,25 @@
 - **最优配置**：seq_len=180, hidden_channels=128, kernel_size=5, num_layers=3, epochs=100
 - **Commit**：`a5a822b`
 
+## 2026-03-24（开源数据验证完成）
+
+### 三模块在线验证（开源数据 + 图表自动生成）
+
+| 模块 | 测试数据 | 结果 | 图表 | 状态 |
+|------|---------|------|------|------|
+| **DeepPredict** | Airline Passengers（144行） | R²=0.9648 ✅ | dp_test_output.png (121KB) | ✅ |
+| **DeepClassify** | UCI Wine（3分类，13特征） | Accuracy=100% ✅ | dc_cm.png (97KB) + dc_roc.png (124KB) + dc_tsne.png (98KB) | ✅ |
+| **DeepDetect** | 温度异常数据（7267行） | 检测出异常 ✅ | dd_test_anomaly.png (754KB) + dd_test_scores.png (118KB) | ✅ |
+
+### 图表自动生成验证
+- ✅ PredictVisualizer → 预测时序图自动生成
+- ✅ ClassifyVisualizer → 混淆矩阵 + ROC + t-SNE 自动生成
+- ✅ DetectVisualizer → 异常时序标注 + 分数分布自动生成
+
+### Git 提交
+- `4405805` test: add Wine dataset test with visualization
+- `3ce7666` test: verify Autoencoder detection with visualizer
+
 ## 2026-03-24（文献调研与图表规划）
 
 ### 子刊文献调研完成
