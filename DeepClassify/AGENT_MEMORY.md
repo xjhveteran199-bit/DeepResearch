@@ -58,6 +58,21 @@
   - GradientBoosting：同样测试通过（Accuracy=93.33%）✅
 - **Gradio 服务**：未启动 Web UI（调试直接在 Python 层完成）
 
+### Wine 数据集测试（2026-03-24 15:25）
+- **数据集**：UCI Wine（178行 × 13列，3类）
+- **模型**：RandomForest（n_estimators=100, max_depth=10）
+- **结果**：
+  - Accuracy：100.00% ✅（≥70%）
+  - F1(weighted)：100.00% ✅
+  - Confusion Matrix：正确输出 3×3 矩阵 ✅
+  - ROC 曲线：正常绘制（AUC=1.0 for all classes）✅
+  - t-SNE：2D 降维正常，3类分离清晰 ✅
+- **生成文件**：
+  - `dc_cm.png`（混淆矩阵）
+  - `dc_roc.png`（ROC曲线）
+  - `dc_tsne.png`（t-SNE图）
+- **状态**：全部验证通过 ✅
+
 ## 可视化模块（2026-03-24新增）
 - **文件**：`src/visualizer.py`
 - **功能**：
