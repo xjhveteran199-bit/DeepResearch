@@ -1,8 +1,8 @@
-Deep-Research v1.1
+Deep-Research v1.11
 Date: 2026-03-24
 Modules: DeepPredict (时序预测) | DeepClassify (信号分类) | DeepDetect (异常检测)
 
 ## 各模块版本
-- DeepPredict: v1.1 (调试后确认 LSTM/RF/GB PASS, CNN1D需更多epoch)
-- DeepClassify: v1.1 (K-Fold + SHAP + 模型对比 + GB后端)
-- DeepDetect: v1.1 (LSTM检测器 + 滑动窗口 + 7种检测器)
+- DeepPredict: v1.11 (LSTM参数优化 R²=0.6258)
+- DeepClassify: v1.1 (Iris Acc=93.33%, K-Fold=94.67%)
+- DeepDetect: v1.2 (torch 2.5.0 + Autoencoder优化)
