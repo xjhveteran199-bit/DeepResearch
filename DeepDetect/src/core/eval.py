@@ -138,3 +138,141 @@ def format_metrics_table(results: Dict[str, Any]) -> str:
         lines.append("=" * 50)
 
     return "\n".join(lines)
+
+
+def find_anomaly_intervals(labels: np.ndarray, min_length: int = 1) -> list:
+    """
+    从二值标签数组中提取连续的异常区间
+
+    Args:
+        labels: 二值标签数组 (0=正常, 1=异常)
+        min_length: 最小区间长度（短于此的区间被忽略）
+
+    Returns:
+        list of (start_idx, end_idx) 异常区间（包含端点）
+    """
+    labels = np.asarray(labels).flatten()
+    n = len(labels)
+
+    if n == 0:
+        return []
+
+    intervals = []
+    in_interval = False
+    start = 0
+
+    for i in range(n):
+        if labels[i] == 1:
+            if not in_interval:
+                start = i
+                in_interval = True
+        else:
+            if in_interval:
+                length = i - start
+                if length >= min_length:
+                    intervals.append((start, i - 1))
+                in_interval = False
+
+    # Handle last interval
+    if in_interval:
+        length = n - start
+        if length >= min_length:
+            intervals.append((start, n - 1))
+
+    return intervals
+
+
+def format_anomaly_intervals(intervals: list, scores: np.ndarray = None) -> str:
+    """
+    格式化异常区间为字符串
+
+    Args:
+        intervals: find_anomaly_intervals 返回的区间列表
+        scores: 对应的异常分数（可选）
+
+    Returns:
+        格式化的区间描述字符串
+    """
+    if not intervals:
+        return "未检测到连续异常区间"
+
+    lines = []
+    lines.append(f"检测到 {len(intervals)} 个连续异常区间:")
+    lines.append("-" * 50)
+
+    total_anomaly_points = sum(end - start + 1 for start, end in intervals)
+
+    for idx, (start, end) in enumerate(intervals):
+        length = end - start + 1
+        if scores is not None:
+            seg_scores = scores[start:end + 1]
+            max_score = float(np.max(seg_scores))
+            mean_score = float(np.mean(seg_scores))
+            lines.append(
+                f"  区间 #{idx + 1}: 索引 [{start:>5} ~ {end:>5}] | "
+                f"长度: {length:>4} | "
+                f"最高分: {max_score:.4f} | 均分: {mean_score:.4f}"
+            )
+        else:
+            lines.append(f"  区间 #{idx + 1}: 索引 [{start} ~ {end}] | 长度: {length}")
+
+    lines.append("-" * 50)
+    if scores is not None:
+        lines.append(f"  总异常点数: {total_anomaly_points} ({total_anomaly_points / len(scores) * 100:.2f}%)")
+
+    return "\n".join(lines)
+
+
+def evaluate_with_intervals(
+    y_true: Optional[np.ndarray],
+    y_pred: np.ndarray,
+    scores: np.ndarray,
+    min_interval_length: int = 1
+) -> Dict[str, Any]:
+    """
+    增强版评估：包含异常区间检测
+
+    Args:
+        y_true: 真实标签
+        y_pred: 预测标签
+        scores: 异常分数
+        min_interval_length: 最小连续异常区间长度
+
+    Returns:
+        包含区间信息的评估结果
+    """
+    results = evaluate_detector(y_true, y_pred, scores)
+
+    # 添加区间分析
+    intervals = find_anomaly_intervals(y_pred, min_length=min_interval_length)
+    results['anomaly_intervals'] = intervals
+    results['n_anomaly_intervals'] = len(intervals)
+
+    if len(intervals) > 0:
+        results['interval_summary'] = {
+            'total_points': sum(end - start + 1 for start, end in intervals),
+            'max_length': max(end - start + 1 for start, end in intervals),
+            'min_length': min(end - start + 1 for start, end in intervals),
+            'mean_length': np.mean([end - start + 1 for start, end in intervals]),
+        }
+
+    if y_true is not None:
+        # 有标签：计算区间级别的精确率和召回率
+        true_intervals = find_anomaly_intervals(y_true, min_length=min_interval_length)
+        results['true_interval_count'] = len(true_intervals)
+
+        # 区间重叠率（预测区间与真实区间的重叠程度）
+        if len(true_intervals) > 0 and len(intervals) > 0:
+            # 简化为：计算预测的异常点有多少比例在真实异常区间内
+            true_anomaly_points = set()
+            for start, end in true_intervals:
+                true_anomaly_points.update(range(start, end + 1))
+
+            pred_in_true = sum(1 for start, end in intervals
+                             for i in range(start, end + 1) if i in true_anomaly_points)
+            total_pred = sum(end - start + 1 for start, end in intervals)
+
+            results['interval_precision'] = pred_in_true / max(total_pred, 1)
+            results['interval_recall'] = pred_in_true / max(len(true_anomaly_points), 1)
+
+    return results

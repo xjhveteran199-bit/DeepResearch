@@ -17,6 +17,7 @@ from src.models.autoencoder import AutoencoderDetector
 from src.models.ocsvm import OCSVMDetector
 from src.models.lof_detector import LOFDetector
 from src.models.stats_detector import StatsDetector
+from src.models.lstm_detector import LSTMDetector
 
 # 检测器注册表
 DETECTOR_REGISTRY = {
@@ -24,6 +25,7 @@ DETECTOR_REGISTRY = {
     'Autoencoder': AutoencoderDetector,
     'OneClassSVM': OCSVMDetector,
     'LOF': LOFDetector,
+    'LSTM': LSTMDetector,
     'Stats_ZScore': lambda **kw: StatsDetector(method='zscore', **kw),
     'Stats_IQR': lambda **kw: StatsDetector(method='iqr', **kw),
 }
@@ -86,7 +88,7 @@ def load_data(file_obj, label_col):
 
 def detect_anomalies(target_col, detector_name, contamination, threshold_mode,
                       custom_threshold, z_threshold, iqr_factor, epochs, batch_size,
-                      n_estimators, n_neighbors, has_label):
+                      n_estimators, n_neighbors, seq_len, hidden_size, has_label):
     """执行异常检测"""
     try:
         dl = state['data_loader']
@@ -116,6 +118,8 @@ def detect_anomalies(target_col, detector_name, contamination, threshold_mode,
         params = {'contamination': contamination}
         if detector_name == 'Autoencoder':
             params.update({'epochs': epochs, 'batch_size': batch_size})
+        elif detector_name == 'LSTM':
+            params.update({'epochs': epochs, 'batch_size': batch_size, 'seq_len': int(seq_len), 'hidden_size': int(hidden_size)})
         elif detector_name == 'Stats_ZScore':
             params.update({'z_threshold': z_threshold})
         elif detector_name == 'Stats_IQR':
@@ -295,10 +299,12 @@ def create_demo():
                             custom_threshold = gr.Number(label="自定义阈值", value=0.5)
                             z_threshold = gr.Slider(1.0, 5.0, value=3.0, step=0.1, label="Z-score 阈值")
                             iqr_factor = gr.Slider(1.0, 3.0, value=1.5, step=0.1, label="IQR 因子")
-                            epochs = gr.Slider(10, 500, value=100, step=10, label="Autoencoder 训练轮数")
+                            epochs = gr.Slider(10, 200, value=50, step=10, label="训练轮数（Autoencoder/LSTM）")
                             batch_size = gr.Slider(8, 256, value=32, step=8, label="Batch Size")
                             n_estimators = gr.Slider(10, 200, value=100, step=10, label="IsolationForest 树数量")
                             n_neighbors = gr.Slider(5, 50, value=20, step=1, label="LOF 近邻数")
+                            seq_len = gr.Slider(5, 100, value=20, step=5, label="LSTM 窗口长度（seq_len）")
+                            hidden_size = gr.Slider(16, 256, value=64, step=16, label="LSTM 隐藏层大小")
 
                         detect_btn = gr.Button("开始检测", variant="primary", size="lg")
 
@@ -309,7 +315,7 @@ def create_demo():
                     fn=detect_anomalies,
                     inputs=[target_col, detector_name, contamination, threshold_mode,
                             custom_threshold, z_threshold, iqr_factor, epochs, batch_size,
-                            n_estimators, n_neighbors, gr.State()],
+                            n_estimators, n_neighbors, seq_len, hidden_size, gr.State()],
                     outputs=[gr.Plot(), metrics_output]
                 )
 
