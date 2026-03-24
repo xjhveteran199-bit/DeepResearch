@@ -158,11 +158,11 @@ class DPPredictor:
                 success, msg = self._lstm_model.train(
                     X_arr, y_arr,
                     hidden_size=p.get('hidden_size', 64),
-                    num_layers=p.get('num_layers', 2),
-                    epochs=p.get('epochs', 50),
+                    num_layers=p.get('num_layers', 3),
+                    epochs=p.get('epochs', 80),
                     batch_size=p.get('batch_size', 32),
                     learning_rate=p.get('learning_rate', 0.001),
-                    seq_len=p.get('seq_len', 10),
+                    seq_len=p.get('seq_len', 90),
                     test_size=test_size,
                     target_col=target_col
                 )
@@ -428,10 +428,10 @@ def build_deep_predict_ui():
             params = {}
             if model_name == 'LSTM':
                 n = len(_dp_loader.df)
-                params['seq_len'] = min(50, max(5, n // 10))
+                params['seq_len'] = min(90, max(30, n // 5))
                 params['hidden_size'] = 64
-                params['num_layers'] = 2
-                params['epochs'] = 30
+                params['num_layers'] = 3
+                params['epochs'] = 80
             elif model_name == 'PatchTST':
                 n = len(_dp_loader.df)
                 params['seq_len'] = min(96, max(12, n // 5))
