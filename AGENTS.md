@@ -15,12 +15,12 @@
 
 ## Agent 职责
 
-### 主 Agent
-- 负责 DeepPredict 模块的迭代更新
-- 汇总两个子 Agent 的汇报
+### 主 Agent（项目经理人）
+- 整合三个模块，协调子 Agent 工作
+- 与项目秘书沟通，生成正式报告
 - 维护 Deep-Research 统一网站
 - 定期推送更新到 GitHub
-- 监控子 Agent 状态（每2小时检查一次）
+- 监控子 Agent 状态（每2小时由项目秘书汇报）
 
 ### 子Agent-1: DeepClassify 专属
 - 路径: `C:\Users\XJH\DeepResearch\DeepClassify\`
