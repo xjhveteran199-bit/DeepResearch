@@ -3,56 +3,111 @@
 ## 架构概览
 
 ```
-主 Agent（我）
-├── DeepPredict 维护（主 Agent 亲自负责）
-├── DeepClassify 维护 ──┐
-│  (子Agent-1 专属)     │
-│  汇报频率: 每2小时一次  │  ← 主Agent汇总 → GitHub + 网站
-└── DeepDetect 维护 ────┘
-   (子Agent-2 专属)
-   汇报频率: 每2小时一次
+项目经理人（主 Agent）
+├── DeepPredict-Agent ──┐
+│   (专职开发/优化/维护)   │
+│   汇报频率: 按需主动汇报   │  ← 项目经理人汇总 → GitHub + 报告
+├── DeepClassify-Agent ──┤
+│   (专职开发/优化/维护)   │
+│   汇报频率: 按需主动汇报   │
+└── DeepDetect-Agent ────┘
+    (专职开发/优化/维护)
+    汇报频率: 按需主动汇报
+
+项目秘书
+└── 定时汇报（每2小时）→ 推送至 webchat
 ```
+
+## 身份固定原则（重要）
+
+**三个专职开发 Agent 的身份是永久固定的，不得随意重建或更换。**
+
+每个开发 Agent 必须：
+1. 持有独立的 `AGENT_MEMORY.md` 文件作为唯一记忆来源
+2. 每次任务前读取自己的记忆文件，确保连续性
+3. 每次任务后更新记忆文件，记录最新进展
+4. 所有 Agent ID 和记忆文件路径写入 `AGENTS.md`，作为团队组织架构的官方记录
+
+---
+
+## Agent ID 固定清单
+
+| Agent | Session ID | 记忆文件 | 负责模块 |
+|-------|-----------|---------|---------|
+| **主 Agent（项目经理人）** | agent:main | — | 整合协调 + 统一网站 |
+| **DeepPredict-Agent** | `91758ccc-a685-4a2b-a383-27a1bdbd78e4` | `DeepPredict/AGENT_MEMORY.md` | DeepPredict |
+| **DeepClassify-Agent** | `8c9d6116-48b9-485d-98c4-c517f8ae895a` | `DeepClassify/AGENT_MEMORY.md` | DeepClassify |
+| **DeepDetect-Agent** | `b5f67e99-9f50-422a-a900-35a792a4debd` | `DeepDetect/AGENT_MEMORY.md` | DeepDetect |
+| **项目秘书** | `98ae4c56-447c-4219-aec3-03a7b9974a12` | `PROJECT_SECRETARY_MEMORY.md` | 定时汇报 + 报告 |
+
+---
 
 ## Agent 职责
 
-### 主 Agent（项目经理人）
+### 项目经理人（主 Agent）
 - 整合三个模块，协调子 Agent 工作
 - 与项目秘书沟通，生成正式报告
 - 维护 Deep-Research 统一网站
 - 定期推送更新到 GitHub
-- 监控子 Agent 状态（每2小时由项目秘书汇报）
+- 接收子 Agent 汇报，决策优先级
 
-### 子Agent-1: DeepClassify 专属
+### DeepPredict-Agent（专职开发）
+- 路径: `C:\Users\XJH\DeepResearch\DeepPredict\`
+- 记忆: `DeepPredict/AGENT_MEMORY.md`
+- 职责: 时序预测模型的迭代开发与优化
+
+### DeepClassify-Agent（专职开发）
 - 路径: `C:\Users\XJH\DeepResearch\DeepClassify\`
-- 记忆文件: `DeepClassify/AGENT_MEMORY.md`
-- 职责: CNN1D/RF/GB/SVM 分类器的迭代开发
-- 汇报: 每2小时向主 Agent 发送进展
+- 记忆: `DeepClassify/AGENT_MEMORY.md`
+- 职责: 信号分类模型的迭代开发与优化
 
-### 子Agent-2: DeepDetect 专属
+### DeepDetect-Agent（专职开发）
 - 路径: `C:\Users\XJH\DeepResearch\DeepDetect\`
-- 记忆文件: `DeepDetect/AGENT_MEMORY.md`
-- 职责: 6种异常检测方法的迭代开发
-- 汇报: 每2小时向主 Agent 发送进展
+- 记忆: `DeepDetect/AGENT_MEMORY.md`
+- 职责: 异常检测方法的迭代开发与优化
 
-## 协作流程
+### 项目秘书
+- 记忆: `PROJECT_SECRETARY_MEMORY.md`
+- 职责: 定时汇报（每2小时）+ 项目报告生成
 
-1. **子Agent 定时汇报** → 发送 session message 给主 Agent
-2. **主Agent 汇总** → 更新统一网站 + 推送 GitHub
-3. **主Agent 监控** → 每2小时检查子Agent状态
-4. **GitHub 同步** → 每次功能更新后自动 push
-
-## 版本管理
-- 当前版本: v1.01 (2026-03-24)
-- 升级规则: 主模块重大升级 → 主版本号变更；子模块更新 → 子版本号变更
-- CHANGELOG 位置: 每个模块目录下 CHANGELOG.md
+---
 
 ## 汇报消息格式
+
+### 开发 Agent → 项目经理人
 ```
-【Deep-Research 协调汇报】
-模块: [DeepClassify/DeepDetect]
+【[模块名] 进展汇报】
 时间: [时间戳]
-状态: [正常/有问题]
-进展: [具体内容]
-问题: [如有]
+本次更新: [具体内容]
+修改文件: [文件名]
+状态: 正常/有问题
 下一步: [计划]
 ```
+
+### 项目秘书 → webchat（定时）
+```
+## Deep-Research 定时汇报
+时间: [时间]
+DeepPredict： [状态/进展]
+DeepClassify： [状态/进展]
+DeepDetect：   [状态/进展]
+网站：         [运行中/已停止]
+GitHub：       [已同步/待推送]
+```
+
+---
+
+## 版本管理
+- 当前版本: v1.11 (2026-03-24)
+- 升级规则: 主模块重大升级 → 主版本号变更；子模块更新 → 子版本号变更
+- 版本文件: `VERSION.txt`
+- 报告存档: `REPORTS/YYYYMMDD.md`
+
+## 文档体系
+| 文件 | 用途 |
+|------|------|
+| `AGENTS.md` | 团队组织架构（本文档） |
+| `PROJECT_LOG.md` | 项目大事记（只追加不删除） |
+| `PROJECT_SECRETARY_MEMORY.md` | 项目秘书专属记忆 |
+| `[模块]/AGENT_MEMORY.md` | 各模块开发 Agent 专属记忆 |
+| `REPORTS/YYYYMMDD.md` | 正式项目报告 |

@@ -56,14 +56,21 @@
 
 ## 2026-03-24（团队重组）
 
-### 团队架构更新
+### 团队架构更新（身份固定原则生效）
 - **主Agent**：角色转型为项目经理人（整合三模块 + 与项目秘书沟通）
-- **DeepPredict-Agent**（新增）：`91758ccc-a685-4a2b-a383-27a1bdbd78e4` — 全职维护 DeepPredict
-- **子Agent-1**（DeepClassify-Agent）：继续全职维护 DeepClassify
-- **子Agent-2**（DeepDetect-Agent）：继续全职维护 DeepDetect
-- **项目秘书**：接管定时汇报（每2小时）
+- **DeepPredict-Agent**：`91758ccc-a685-4a2b-a383-27a1bdbd78e4` — 全职维护 DeepPredict
+- **DeepClassify-Agent**：`8c9d6116-48b9-485d-98c4-c517f8ae895a` — 全职维护 DeepClassify
+- **DeepDetect-Agent**：`b5f67e99-9f50-422a-a900-35a792a4debd` — 全职维护 DeepDetect
+- **项目秘书**：`98ae4c56-447c-4219-aec3-03a7b9974a12` — 定时汇报 + 报告生成
+
+### Agent 记忆文件（已固定）
+- `DeepPredict/AGENT_MEMORY.md` ✅
+- `DeepClassify/AGENT_MEMORY.md` ✅
+- `DeepDetect/AGENT_MEMORY.md` ✅
+- `PROJECT_SECRETARY_MEMORY.md` ✅
 
 ### Git 提交
+- `02b5dd4` Update: AGENTS.md - 主Agent转型为项目经理人
 - `917e1ee` Add: 项目开发报告 20260324-2
 
 ## 2026-03-24（问题修复与优化）
