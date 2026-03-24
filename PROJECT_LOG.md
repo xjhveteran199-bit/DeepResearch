@@ -54,6 +54,32 @@
 
 ---
 
+## 2026-03-24（问题修复与优化）
+
+### torch 升级成功（DeepDetect-Agent）
+- 操作：`pip install torch==2.5.0+cpu --index-url https://download.pytorch.org/whl/cpu`
+- 结果：torch 2.5.0+cpu 安装成功，DLL加载正常，无需安装VC++ Redistributable
+- numpy 1.26.4 依然兼容
+- Commit：`8056bc1`
+
+### Autoencoder 优化（DeepDetect-Agent）
+- Early Stopping：patience=5, min_delta=1e-5
+- Reduce max_epochs：200 → 50
+- Batch Normalization：Encoder/Decoder 每层加入 BatchNorm1d
+- ReduceLROnPlateau：mode='min', factor=0.5, patience=3, min_lr=1e-6
+- Commit：`8056bc1`
+
+### LSTM 参数优化（主Agent）
+- 优化测试：seq_len/num_layers/epochs 多组合搜索
+- 最优配置：seq_len=90, hidden_channels=64, num_layers=3, kernel_size=5, epochs=80
+- 优化结果：R²=0.6258 ✅（超过0.55目标）
+- 优化前：R²=0.545
+- 更新到网站默认参数
+
+### Git 提交
+- `ee29395` Update: LSTM parameters optimized (seq_len=90, num_layers=3, epochs=80)
+- `8056bc1` DeepDetect: torch 2.5.0 upgrade + Autoencoder efficiency optimization
+
 ## 2026-03-24（v1.1 最终确认）
 
 ### 各模块最终版本
