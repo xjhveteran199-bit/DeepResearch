@@ -8,39 +8,38 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from .detector_base import DetectorBase
 import logging
-import io
 
 logger = logging.getLogger(__name__)
 
 
 class AutoencoderModel(nn.Module):
-    """自编码器网络"""
+    """自编码器网络（带 Batch Normalization）"""
 
     def __init__(self, input_dim: int, hidden_dims: list = [16, 8]):
         super().__init__()
         self.input_dim = input_dim
 
-        # Encoder
+        # Encoder: Linear -> BatchNorm -> ReLU
         encoder_layers = []
         prev_dim = input_dim
         for h_dim in hidden_dims:
-            encoder_layers.extend([
-                nn.Linear(prev_dim, h_dim),
-                nn.ReLU()
-            ])
+            encoder_layers.append(nn.Linear(prev_dim, h_dim))
+            encoder_layers.append(nn.BatchNorm1d(h_dim))
+            encoder_layers.append(nn.ReLU())
             prev_dim = h_dim
         self.encoder = nn.Sequential(*encoder_layers)
 
-        # Decoder
+        # Decoder: Linear -> BatchNorm -> ReLU (最后一层不用激活)
         decoder_layers = []
         hidden_dims_rev = hidden_dims[::-1]
         for i, h_dim in enumerate(hidden_dims_rev[1:] + [input_dim]):
-            decoder_layers.extend([
-                nn.Linear(prev_dim, h_dim),
-                nn.ReLU() if i < len(hidden_dims_rev) - 1 else nn.Identity()
-            ])
+            decoder_layers.append(nn.Linear(prev_dim, h_dim))
+            if i < len(hidden_dims_rev) - 1:
+                decoder_layers.append(nn.BatchNorm1d(h_dim))
+                decoder_layers.append(nn.ReLU())
             prev_dim = h_dim
         self.decoder = nn.Sequential(*decoder_layers)
 
@@ -56,24 +55,45 @@ class AutoencoderModel(nn.Module):
         return self.decoder(x)
 
 
+class EarlyStopping:
+    """早停：监控 loss，patience 个 epoch 没有改善则停止"""
+    def __init__(self, patience: int = 5, min_delta: float = 1e-5):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = float('inf')
+        self.early_stop = False
+
+    def __call__(self, val_loss: float):
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+
 class AutoencoderDetector(DetectorBase):
     """Autoencoder 异常检测器"""
 
     def __init__(self, contamination: float = 0.1,
                  hidden_dims: list = None,
-                 epochs: int = 100,
+                 epochs: int = 50,
                  batch_size: int = 32,
                  learning_rate: float = 0.001,
                  device: str = 'auto',
+                 early_stopping_patience: int = 5,
                  **kwargs):
         """
         Args:
             contamination: 异常比例
             hidden_dims: 编码器隐藏层维度列表
-            epochs: 训练轮数
+            epochs: 训练轮数（默认50，早停可提前结束）
             batch_size: 批大小
             learning_rate: 学习率
             device: 计算设备 'auto' | 'cuda' | 'cpu'
+            early_stopping_patience: 早停耐心值（多少 epoch 没改善则停止）
         """
         super().__init__(detector_type='Autoencoder', contamination=contamination)
 
@@ -81,6 +101,7 @@ class AutoencoderDetector(DetectorBase):
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.early_stopping_patience = early_stopping_patience
 
         # 自动选择设备
         if device == 'auto':
@@ -92,7 +113,7 @@ class AutoencoderDetector(DetectorBase):
         self._train_reconstruction_errors: np.ndarray = None
 
     def _fit_model(self, X_train: np.ndarray):
-        """训练自编码器"""
+        """训练自编码器（带早停 + LR调度）"""
         input_dim = X_train.shape[1]
 
         # 构建模型
@@ -105,7 +126,12 @@ class AutoencoderDetector(DetectorBase):
 
         # 优化器
         optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        # LR 调度：loss 平台期时降低学习率
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6)
         criterion = nn.MSELoss()
+
+        # 早停
+        early_stopping = EarlyStopping(patience=self.early_stopping_patience)
 
         # 训练
         self.model.train()
@@ -119,9 +145,17 @@ class AutoencoderDetector(DetectorBase):
                 optimizer.step()
                 total_loss += loss.item()
 
-            if (epoch + 1) % 20 == 0:
-                avg_loss = total_loss / len(dataloader)
-                logger.info(f"[Autoencoder] Epoch {epoch+1}/{self.epochs}, Loss: {avg_loss:.6f}")
+            avg_loss = total_loss / len(dataloader)
+            scheduler.step(avg_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+
+            if (epoch + 1) % 10 == 0 or early_stopping.early_stop:
+                logger.info(f"[Autoencoder] Epoch {epoch+1}/{self.epochs}, Loss: {avg_loss:.6f}, LR: {current_lr:.6f}")
+
+            early_stopping(avg_loss)
+            if early_stopping.early_stop:
+                logger.info(f"[Autoencoder] Early stopping at epoch {epoch+1} (no improvement for {self.early_stopping_patience} epochs)")
+                break
 
         # 计算训练集重建误差
         self.model.eval()

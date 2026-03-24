@@ -7,7 +7,7 @@
 
 ## 模块基本信息
 - **模块路径**：`C:\Users\XJH\DeepResearch\DeepDetect\`
-- **版本**：v1.1（2026-03-24）
+- **版本**：v1.2（2026-03-24）
 - **定位**：时序异常检测，支持有监督和无监督两种模式
 - **Git 远程**：`https://github.com/xjhveteran199-bit/DeepResearch`
 
@@ -23,21 +23,30 @@
 - Web 界面：Gradio（端口7861独立运行）
 
 ## 技术栈
-- Python 3.12 + PyTorch 2.2.0（CPU）+ scikit-learn + Gradio 6.9.0
-- numpy 1.26.4（注意：torch 2.2.0 需要 numpy < 2.0）
+- Python 3.12 + **PyTorch 2.5.0（CPU）** + scikit-learn + Gradio 6.9.0
+- numpy 1.26.4（torch 2.5.0 兼容 numpy 1.26.x）
 
 ## 已知问题
-- Autoencoder 对高维数据训练较慢，建议 epoch 不超过 200
+- ~~Autoencoder 对高维数据训练较慢，建议 epoch 不超过 200~~ → v1.2 已优化（见下）
 - IsolationForest 的 contamination 参数需要预先估计异常比例
-- PyTorch CPU 版本在某些 Windows 环境下有 DLL 加载问题（1114/126 错误）
-  - 解决：清理 `~orch` 等残留目录后重新安装 torch
+- ~~PyTorch CPU 版本在某些 Windows 环境下有 DLL 加载问题（1114/126 错误）~~ → **v1.2 已升级 torch 2.5.0，DLL 问题已解决**
+
+## Autoencoder v1.2 优化（2026-03-24）
+- **Early Stopping**：监控训练 loss，5个epoch没有改善则停止（默认patience=5）
+- **Reduce max_epochs**：默认从100降到50（早停可提前结束）
+- **Batch Normalization**：Encoder/Decoder 每层加入 BatchNorm1d，稳定训练
+- **Learning Rate Scheduling**：ReduceLROnPlateau（factor=0.5, patience=3, min_lr=1e-6）
+- **新增参数**：`early_stopping_patience`（早停耐心值）
+- 实测：torch 2.5.0+cpu 正常工作，Autoencoder 和 LSTM 均通过测试
 
 ## 迭代 Roadmap
 1. ✅ 增加 LSTM-based 异常检测器（时序专用）- v1.1 完成
 2. ✅ 增加滑动窗口异常区间检测 - v1.1 完成
-3. 增加多变量异常检测（多列同时输入）- 已部分支持（LSTM/Autoencoder）
-4. 增加 SHAP 可解释性（哪些特征导致异常）
-5. API 服务化（FastAPI）
+3. ✅ Autoencoder 训练效率优化（Early Stopping / BatchNorm / LR Scheduling）- v1.2 完成
+4. ✅ torch 2.2.0 → 2.5.0 升级（解决 DLL 问题）- v1.2 完成
+5. 增加多变量异常检测（多列同时输入）- 已部分支持（LSTM/Autoencoder）
+6. 增加 SHAP 可解释性（哪些特征导致异常）
+7. API 服务化（FastAPI）
 
 ## 新增文件
 - `src/models/lstm_detector.py`：LSTM 时序异常检测器
@@ -68,6 +77,7 @@
 ## 最近更新记录
 | 日期 | 更新内容 | 状态 |
 |------|---------|------|
+| 2026-03-24 | v1.2 torch 2.2.0 → 2.5.0 升级（CPU版正常）+ Autoencoder 效率优化（早停/BatchNorm/LR调度） | ✅ 完成 |
 | 2026-03-24 | 独立调试测试（dd_temp_anomaly.csv，7267行）：全部7种检测器通过 | ✅ 完成 |
 | 2026-03-24 | BUG修复：LOFDetector 的 `decision_function` 缺失 → 添加 `novelty=True` | ✅ 完成 |
 | 2026-03-24 | v1.1 新增 LSTM 时序异常检测器 + 滑动窗口异常区间检测 | ✅ 完成 |
