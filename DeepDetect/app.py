@@ -11,7 +11,8 @@ import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
 
 from src.core.data_loader import DataLoader
-from src.core.eval import evaluate_detector, format_metrics_table
+from src.core.eval import evaluate_detector, format_metrics_table, find_anomaly_intervals
+from src.visualizer import DetectVisualizer
 from src.models.isolation_forest import IsolationForestDetector
 from src.models.autoencoder import AutoencoderDetector
 from src.models.ocsvm import OCSVMDetector
@@ -162,75 +163,139 @@ def detect_anomalies(target_col, detector_name, contamination, threshold_mode,
 
 
 def plot_results(X, scores, labels, threshold):
-    """生成可视化图表"""
+    """生成可视化图表 - 使用 DetectVisualizer 子刊风格"""
     n_samples = len(X)
     n_anomalies = int(np.sum(labels))
-
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-    # 1. 如果是单列时序数据，绘制时序图
+    
+    # 使用 DetectVisualizer 生成图表
+    # 时序数据
     if X.shape[1] == 1:
-        ax = axes[0, 0]
-        x_values = X.values.flatten()
-        idx = np.arange(n_samples)
-        ax.plot(idx, x_values, 'b-', alpha=0.6, label='Data')
-        anomaly_idx = np.where(labels == 1)[0]
-        if len(anomaly_idx) > 0:
-            ax.scatter(anomaly_idx, x_values[anomaly_idx], c='red', s=30, zorder=5, label=f'Anomalies ({n_anomalies})')
-        ax.set_xlabel('Index')
-        ax.set_ylabel(X.columns[0])
-        ax.set_title('Time Series with Anomalies')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+        times = np.arange(n_samples)
+        values = X.values.flatten()
+        col_name = X.columns[0]
     else:
-        # 多维数据：绘制第一个特征的时序
-        ax = axes[0, 0]
-        x_values = X.values[:, 0]
-        idx = np.arange(n_samples)
-        ax.plot(idx, x_values, 'b-', alpha=0.6)
-        anomaly_idx = np.where(labels == 1)[0]
-        if len(anomaly_idx) > 0:
-            ax.scatter(anomaly_idx, x_values[anomaly_idx], c='red', s=30, zorder=5)
-        ax.set_xlabel('Index')
-        ax.set_ylabel(X.columns[0])
-        ax.set_title(f'First Feature with Anomalies ({n_anomalies})')
-        ax.grid(True, alpha=0.3)
-
-    # 2. 异常分数时间序列
-    ax = axes[0, 1]
-    ax.plot(idx, scores, 'b-', alpha=0.6, label='Anomaly Score')
-    ax.axhline(y=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.3f})')
+        times = np.arange(n_samples)
+        values = X.values[:, 0]
+        col_name = X.columns[0]
+    
+    # 生成 2x2 图表
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # 1. 使用 DetectVisualizer 绘制异常时序标注图 (P0)
+    idx = np.arange(n_samples)
+    anomaly_idx = np.where(labels == 1)[0]
+    
+    # 子刊风格时序图
+    ax1 = axes[0, 0]
+    ax1.plot(idx, values, color='#1f77b4', linewidth=0.8, alpha=0.7, label='Time Series')
     if len(anomaly_idx) > 0:
-        ax.scatter(anomaly_idx, scores[anomaly_idx], c='red', s=30, zorder=5, label='Anomalies')
-    ax.set_xlabel('Index')
-    ax.set_ylabel('Score')
-    ax.set_title('Anomaly Scores Over Time')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # 3. 分数分布直方图
-    ax = axes[1, 0]
-    ax.hist(scores, bins=50, alpha=0.7, color='steelblue', edgecolor='black')
-    ax.axvline(x=threshold, color='r', linestyle='--', linewidth=2, label=f'Threshold ({threshold:.3f})')
-    ax.set_xlabel('Anomaly Score')
-    ax.set_ylabel('Frequency')
-    ax.set_title('Score Distribution')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # 4. 正常 vs 异常分数箱线图
-    ax = axes[1, 1]
+        ax1.scatter(anomaly_idx, values[anomaly_idx], c='#d62728', s=25, zorder=5, 
+                    label=f'Anomalies (n={n_anomalies})', alpha=0.8)
+    ax1.set_xlabel('Index', fontsize=11)
+    ax1.set_ylabel(col_name, fontsize=11)
+    ax1.set_title('Time Series with Anomaly Detection', fontsize=12, fontweight='bold')
+    ax1.legend(loc='upper right', fontsize=9)
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. 异常分数时间序列 (带阈值线)
+    ax2 = axes[0, 1]
+    ax2.plot(idx, scores, color='#ff7f0e', linewidth=0.8, alpha=0.7, label='Anomaly Score')
+    ax2.axhline(y=threshold, color='#d62728', linestyle='--', linewidth=1.5, 
+                label=f'Threshold ({threshold:.3f})')
+    if len(anomaly_idx) > 0:
+        ax2.scatter(anomaly_idx, scores[anomaly_idx], c='#d62728', s=20, zorder=5, alpha=0.7)
+    ax2.set_xlabel('Index', fontsize=11)
+    ax2.set_ylabel('Score', fontsize=11)
+    ax2.set_title('Anomaly Scores Over Time', fontsize=12, fontweight='bold')
+    ax2.legend(loc='upper right', fontsize=9)
+    ax2.grid(True, alpha=0.3)
+    
+    # 3. 使用 DetectVisualizer 绘制分数分布 (P0)
+    ax3 = axes[1, 0]
     normal_scores = scores[labels == 0]
     anomaly_scores = scores[labels == 1]
+    
+    ax3.hist(normal_scores, bins=40, alpha=0.6, color='steelblue', 
+             label=f'Normal (n={len(normal_scores)})', edgecolor='white')
+    ax3.hist(anomaly_scores, bins=40, alpha=0.6, color='lightcoral', 
+             label=f'Anomaly (n={len(anomaly_scores)})', edgecolor='white')
+    ax3.axvline(x=threshold, color='#d62728', linestyle='--', linewidth=2, 
+                label=f'Threshold ({threshold:.3f})')
+    ax3.set_xlabel('Anomaly Score', fontsize=11)
+    ax3.set_ylabel('Frequency', fontsize=11)
+    ax3.set_title('Score Distribution', fontsize=12, fontweight='bold')
+    ax3.legend(loc='upper right', fontsize=9)
+    ax3.grid(True, alpha=0.3, axis='y')
+    
+    # 4. 正常 vs 异常分数箱线图
+    ax4 = axes[1, 1]
     data_to_plot = [normal_scores, anomaly_scores]
-    bp = ax.boxplot(data_to_plot, labels=['Normal', 'Anomaly'], patch_artist=True)
+    bp = ax4.boxplot(data_to_plot, labels=['Normal', 'Anomaly'], patch_artist=True, widths=0.6)
     bp['boxes'][0].set_facecolor('lightblue')
     bp['boxes'][1].set_facecolor('lightcoral')
-    ax.set_ylabel('Anomaly Score')
-    ax.set_title('Score Comparison')
-    ax.grid(True, alpha=0.3)
+    for box in bp['boxes']:
+        box.set_alpha(0.7)
+    ax4.set_ylabel('Anomaly Score', fontsize=11)
+    ax4.set_title('Score Comparison', fontsize=12, fontweight='bold')
+    ax4.grid(True, alpha=0.3, axis='y')
+    
+    # 添加统计信息
+    stats_text = f'Samples: {n_samples} | Anomalies: {n_anomalies} ({n_anomalies/n_samples*100:.1f}%)'
+    fig.text(0.5, 0.01, stats_text, ha='center', fontsize=10, 
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+    return fig
 
-    plt.tight_layout()
+
+def plot_interval_visualization(X, scores, labels, threshold):
+    """
+    使用 DetectVisualizer 绘制异常区间可视化 (P1)
+    
+    Args:
+        X: 特征数据 (DataFrame)
+        scores: 异常分数
+        labels: 预测标签
+        threshold: 阈值
+    
+    Returns:
+        matplotlib.figure.Figure
+    """
+    from src.visualizer import DetectVisualizer
+    
+    n_samples = len(X)
+    
+    # 获取时序数据
+    if X.shape[1] == 1:
+        times = np.arange(n_samples)
+        values = X.values.flatten()
+        col_name = X.columns[0]
+    else:
+        times = np.arange(n_samples)
+        values = X.values[:, 0]
+        col_name = X.columns[0]
+    
+    # 使用 find_anomaly_intervals 获取区间
+    intervals = find_anomaly_intervals(labels)
+    
+    # 转换为 DataFrame
+    interval_df = DetectVisualizer.create_interval_df(intervals)
+    
+    # 创建区间可视化
+    fig = DetectVisualizer.plot_anomaly_intervals(
+        times=times,
+        values=values,
+        interval_df=interval_df,
+        labels=labels,
+        title="Anomaly Intervals Visualization",
+        ylabel=col_name,
+        xlabel="Time Index",
+        figsize=(14, 5),
+        dpi=150,
+        show_interval_labels=True,
+        interval_color='#FFB6C1'
+    )
+    
     return fig
 
 
@@ -323,8 +388,38 @@ def create_demo():
             with gr.TabItem("📊 检测结果"):
                 gr.Markdown("### 时序图 & 异常标注")
                 plot_output = gr.Plot(label="检测可视化")
+                
+            # ===== Tab 4: 异常区间 =====
+            with gr.TabItem("🗺️ 异常区间"):
+                gr.Markdown("### 异常区间可视化 (基于 find_anomaly_intervals)")
+                interval_plot_output = gr.Plot(label="异常区间可视化")
+                show_interval_btn = gr.Button("显示异常区间图", variant="secondary")
+                
+                def show_interval_plot():
+                    """显示异常区间可视化"""
+                    X = state.get('X')
+                    scores = state.get('scores')
+                    labels = state.get('labels')
+                    threshold = state.get('threshold')
+                    
+                    if X is None or scores is None or labels is None or threshold is None:
+                        return None
+                    
+                    try:
+                        fig = plot_interval_visualization(X, scores, labels, threshold)
+                        return fig
+                    except Exception as e:
+                        import traceback
+                        print(f"Interval plot error: {str(e)}\n{traceback.format_exc()}")
+                        return None
+                
+                show_interval_btn.click(
+                    fn=show_interval_plot,
+                    inputs=[],
+                    outputs=[interval_plot_output]
+                )
 
-            # ===== Tab 4: 导出 =====
+            # ===== Tab 5: 导出 =====
             with gr.TabItem("💾 导出结果"):
                 gr.Markdown("### 导出带异常标签的数据")
                 export_btn = gr.Button("导出 CSV", variant="primary")

@@ -7,7 +7,7 @@
 
 ## 模块基本信息
 - **模块路径**：`C:\Users\XJH\DeepResearch\DeepDetect\`
-- **版本**：v1.2（2026-03-24）
+- **版本**：v1.3（2026-03-24）
 - **定位**：时序异常检测，支持有监督和无监督两种模式
 - **Git 远程**：`https://github.com/xjhveteran199-bit/DeepResearch`
 
@@ -77,8 +77,23 @@
 ## 最近更新记录
 | 日期 | 更新内容 | 状态 |
 |------|---------|------|
+| 2026-03-24 | v1.3 新增可视化模块 `src/visualizer.py`（DetectVisualizer 类）+ 异常区间可视化 Tab | ✅ 完成 |
 | 2026-03-24 | v1.2 torch 2.2.0 → 2.5.0 升级（CPU版正常）+ Autoencoder 效率优化（早停/BatchNorm/LR调度） | ✅ 完成 |
 | 2026-03-24 | 独立调试测试（dd_temp_anomaly.csv，7267行）：全部7种检测器通过 | ✅ 完成 |
 | 2026-03-24 | BUG修复：LOFDetector 的 `decision_function` 缺失 → 添加 `novelty=True` | ✅ 完成 |
 | 2026-03-24 | v1.1 新增 LSTM 时序异常检测器 + 滑动窗口异常区间检测 | ✅ 完成 |
 | 2026-03-24 | v1.0 初始版本，6种检测器完整实现 | ✅ 完成 |
+
+## v1.3 可视化模块详情（2026-03-24）
+- **新增文件**：`src/visualizer.py`
+- **DetectVisualizer 类**包含方法：
+  - `plot_anomaly_timeseries()` - P0：时序+异常标注图（蓝色线+红色散点+橙色分数线+阈值虚线）
+  - `plot_anomaly_intervals()` - P1：异常区间可视化（彩色背景填充异常段）
+  - `plot_precision_recall_curve()` - PR 曲线
+  - `plot_score_distribution()` - 分数分布直方图
+  - `create_interval_df()` - 区间列表转 DataFrame
+- **UI 变更**：
+  - 新增 Tab 4 "🗺️ 异常区间" - 专门展示异常区间可视化
+  - detect_anomalies 函数增强：返回子刊风格图表
+- **scienceplots 集成**：子刊风格图表（science + nature），LaTeX 渲染已禁用以确保兼容性
+- **测试**：全部 4 个图表函数测试通过（使用 dd_temp_anomaly.csv，7267 行）

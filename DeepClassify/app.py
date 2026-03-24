@@ -296,9 +296,20 @@ def on_train(model_name, test_size, kfold,
     from sklearn.metrics import confusion_matrix
     cm = confusion_matrix(y_te, y_pred)
     cm_html = _cm_to_html(cm, state.class_names)
+    
+    # 混淆矩阵图片（使用新 visualizer）
+    cm_fig = _plot_confusion_matrix(y_te, y_pred, state.class_names)
 
     # ROC 曲线
     roc_fig = _plot_roc_curve(y_te, y_proba, state.class_names)
+    
+    # t-SNE 可视化（仅当样本数足够时）
+    tsne_fig = None
+    if len(y_te) >= 10:  # t-SNE 需要足够样本
+        try:
+            tsne_fig = _plot_tsne(X_te, y_te, state.class_names)
+        except Exception as e:
+            logger.warning(f"t-SNE 生成失败: {e}")
 
     # 指标展示
     metrics_html = _metrics_to_html(full_metrics)
@@ -307,7 +318,7 @@ def on_train(model_name, test_size, kfold,
     save_path = str(APP_ROOT / "deepclassify_model.pkl")
     classifier.save(save_path)
 
-    return msg, metrics_html, cm_html, roc_fig, save_path, kfold_html
+    return msg, metrics_html, cm_html, roc_fig, save_path, kfold_html, cm_fig, tsne_fig
 
 
 def _clone_classifier(model_name, local_vars):
@@ -581,6 +592,32 @@ def _cm_to_html(cm, labels):
         + "</table>"
     )
     return f"<div style='overflow-x:auto;'>{table}</div>"
+
+
+def _plot_roc_curve(y_true, y_proba, class_names):
+    """绘制 ROC 曲线（使用新 visualizer）"""
+    from src.visualizer import ClassifyVisualizer
+    viz = ClassifyVisualizer(dpi=150, figsize=(6, 5))
+    fig, _ = viz.plot_roc_curve(y_true, y_proba, class_names)
+    return fig
+
+
+def _plot_confusion_matrix(y_true, y_pred, labels):
+    """绘制混淆矩阵（使用新 visualizer）"""
+    from src.visualizer import ClassifyVisualizer
+    import matplotlib.pyplot as plt
+    viz = ClassifyVisualizer(dpi=150, figsize=(6, 5))
+    fig = viz.plot_confusion_matrix(y_true, y_pred, labels)
+    return fig
+
+
+def _plot_tsne(X_features, y_true, labels):
+    """绘制 t-SNE 可视化（使用新 visualizer）"""
+    from src.visualizer import ClassifyVisualizer
+    import matplotlib.pyplot as plt
+    viz = ClassifyVisualizer(dpi=150, figsize=(8, 6))
+    fig = viz.plot_tsne(X_features, labels, y_true, perplexity=min(30, len(y_true)//4))
+    return fig
 
 
 def _metrics_to_html(metrics):
@@ -858,6 +895,8 @@ def build_ui():
                     with gr.Column(scale=1):
                         shap_plot = gr.HTML(label="SHAP Summary Plot", visible=False)
                 roc_plot = gr.Plot(label="ROC 曲线")
+                cm_plot = gr.Plot(label="混淆矩阵图")
+                tsne_plot = gr.Plot(label="t-SNE 可视化", visible=False)
 
                 # 对比表格
                 compare_display = gr.HTML(label="模型对比结果", visible=False)
@@ -871,7 +910,7 @@ def build_ui():
                         gb_trees, gb_depth, gb_lr, gb_backend,
                         svm_c, svm_kernel
                     ],
-                    outputs=[train_msg, metrics_display, cm_display, roc_plot, download_file, kfold_display]
+                    outputs=[train_msg, metrics_display, cm_display, roc_plot, download_file, kfold_display, cm_plot, tsne_plot]
                 )
 
                 shap_btn.click(
