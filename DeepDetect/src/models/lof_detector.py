@@ -35,22 +35,18 @@ class LOFDetector(DetectorBase):
             n_neighbors=self.n_neighbors,
             metric=self.metric,
             p=self.p,
+            novelty=True,  # 启用 novelty 模式，使 decision_function 可用
             n_jobs=-1
         )
 
     def _fit_model(self, X_train: np.ndarray):
-        # LOF 使用 novelty=False，在fit时就需要全部数据
         self.model = self._build_model()
-        # LOF 需要用全部数据 fit
-        predictions = self.model.fit_predict(X_train)
-        # 获取训练集上的负偏移（分数越大越异常）
-        self._train_scores = -self.model.negative_outlier_factor_
+        self.model.fit(X_train)
+        # 获取训练集上的分数（novelty=True 下 decision_function 可用）
+        self._train_scores = -self.model.decision_function(X_train)
 
     def _predict_scores(self, X: np.ndarray) -> np.ndarray:
-        """返回异常分数（LOF分数越大越异常）"""
-        if not hasattr(self, '_train_scores'):
-            raise RuntimeError("Model not fitted")
-        # 对新数据，使用decision_function
+        """返回异常分数（分数越大越异常）"""
         return -self.model.decision_function(X)
 
     def _get_model_state(self) -> dict:
