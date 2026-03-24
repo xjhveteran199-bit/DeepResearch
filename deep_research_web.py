@@ -27,6 +27,12 @@ import logging
 import json
 import zipfile
 import io
+import warnings
+warnings.filterwarnings('ignore')
+
+# ===== DeepPredict Visualizer =====
+sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
+from visualizer import PredictVisualizer
 
 # ===== 配置日志 =====
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -536,8 +542,8 @@ def _build_deep_classify_ui():
             # CNN1D 参数
             with gr.Column(visible=False) as dc_cnn_panel:
                 gr.Markdown("**CNN1D 参数**")
-                dc_cnn_hidden = gr.Number(label="hidden_channels", value=64)
-                dc_cnn_kernel = gr.Number(label="kernel_size", value=3)
+                dc_cnn_hidden = gr.Number(label="hidden_channels", value=128)
+                dc_cnn_kernel = gr.Number(label="kernel_size", value=5)
                 dc_cnn_epochs = gr.Number(label="epochs", value=50)
                 dc_cnn_lr = gr.Number(label="learning_rate", value=0.001)
                 dc_cnn_bs = gr.Number(label="batch_size", value=32)
@@ -1033,56 +1039,78 @@ def _extract_path(file_obj):
 
 
 def _plot_results(predictor, X_df, y_series, y_col):
-    """绘制预测结果图"""
+    """绘制预测结果图 - 使用 PredictVisualizer 子刊风格"""
     try:
         preds = predictor.predict(X_df)
-        n = len(y_series)
+        y_true = y_series.values
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+        # 使用新的 PredictVisualizer
+        viz = PredictVisualizer(figsize=(12, 5))
 
-        # 图1：真实值 vs 预测值
-        ax1 = axes[0]
         if predictor.task_type == 'classification':
+            # 分类任务：使用散点图 + 混淆矩阵
+            fig, axes = plt.subplots(1, 2, figsize=(14, 4))
             # 散点图
-            ax1.scatter(range(n), y_series, alpha=0.5, label='真实', s=20)
-            ax1.scatter(range(n), preds, alpha=0.5, label='预测', s=20)
-            ax1.set_xlabel('样本')
-            ax1.set_ylabel(y_col)
-            ax1.legend()
-            ax1.set_title(f'{y_col} 真实 vs 预测')
-        else:
-            ax1.plot(range(n), y_series.values, label='真实', alpha=0.7)
-            ax1.plot(range(n), preds, label='预测', alpha=0.7)
-            ax1.set_xlabel('样本')
-            ax1.set_ylabel(y_col)
-            ax1.legend()
-            ax1.set_title(f'{y_col} 时序预测结果')
+            axes[0].scatter(range(len(y_true)), y_true, alpha=0.5, label='Actual', s=20, c='#1f77b4')
+            axes[0].scatter(range(len(preds)), preds, alpha=0.5, label='Predicted', s=20, c='#d62728')
+            axes[0].set_xlabel('Sample')
+            axes[0].set_ylabel(y_col)
+            axes[0].legend()
+            axes[0].set_title(f'{y_col} Actual vs Predicted')
+            axes[0].grid(True, alpha=0.3)
 
-        # 图2：残差分布
-        ax2 = axes[1]
-        if predictor.task_type != 'classification':
-            residuals = y_series.values - preds
-            ax2.hist(residuals, bins=30, alpha=0.7, color='steelblue')
-            ax2.axvline(0, color='red', linestyle='--')
-            ax2.set_title('残差分布')
-            ax2.set_xlabel('残差')
-            ax2.set_ylabel('频数')
-        else:
+            # 混淆矩阵
             from sklearn.metrics import confusion_matrix
             import seaborn as sns
             labels = sorted(y_series.unique())
             cm = confusion_matrix(y_series, preds, labels=labels)
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax2,
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[1],
                        xticklabels=labels, yticklabels=labels)
-            ax2.set_title('Confusion Matrix')
-            ax2.set_xlabel('预测')
-            ax2.set_ylabel('真实')
+            axes[1].set_title('Confusion Matrix')
+            axes[1].set_xlabel('Predicted')
+            axes[1].set_ylabel('Actual')
+            plt.tight_layout()
+            return fig
+        else:
+            # 回归任务：使用子刊风格预测图 + 残差图
+            # 自动选择放大区域（中间 20%）
+            n = len(y_true)
+            zoom_start = int(n * 0.4)
+            zoom_end = int(n * 0.6)
 
-        plt.tight_layout()
-        return fig
+            # 生成子刊风格时序图
+            fig = viz.plot_prediction_timeseries(
+                y_true, preds,
+                title=f"{y_col} Prediction vs Actual",
+                ylabel=y_col,
+                zoom_range=(zoom_start, zoom_end),
+                zoom_title=f"Zoomed Detail ({zoom_start}-{zoom_end})",
+                labels={'true': 'Actual', 'pred': 'Predicted', 'ci': '95% CI'},
+                show_metrics=True,
+                figsize=(14, 8),
+                dpi=150
+            )
+            return fig
     except Exception as e:
-        logger.warning(f"绘图失败: {e}")
-        return None
+        logger.warning(f"绘图失败 (使用备用方案): {e}")
+        # 降级备用方案
+        try:
+            import traceback
+            traceback.print_exc()
+            preds = predictor.predict(X_df)
+            n = len(y_series)
+            fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+            axes[0].plot(range(n), y_series.values, label='Actual', alpha=0.7)
+            axes[0].plot(range(n), preds, label='Predicted', alpha=0.7)
+            axes[0].legend()
+            axes[0].set_title(f'{y_col} Prediction')
+            axes[1].hist(y_series.values - preds, bins=30, alpha=0.7)
+            axes[1].set_title('Residuals')
+            plt.tight_layout()
+            return fig
+        except Exception as e2:
+            logger.error(f"备用绘图也失败: {e2}")
+            return None
 
 
 # ============================================================
