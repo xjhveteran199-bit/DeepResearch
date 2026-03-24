@@ -19,6 +19,7 @@
 - **新增**：SHAP 可解释性（TreeExplainer for RF/GB, KernelExplainer for CNN1D/SVM）
 - **新增**：GB 后端选择（sklearn/LightGBM/XGBoost/auto）
 - **新增**：模型对比功能（同时训练并比较所有模型）
+- **新增**：可视化模块（4个核心图表：混淆矩阵、ROC曲线、t-SNE、信号时序标注）
 - Web 界面：Gradio（端口7861独立运行）
 
 ## 技术栈
@@ -57,11 +58,22 @@
   - GradientBoosting：同样测试通过（Accuracy=93.33%）✅
 - **Gradio 服务**：未启动 Web UI（调试直接在 Python 层完成）
 
+## 可视化模块（2026-03-24新增）
+- **文件**：`src/visualizer.py`
+- **功能**：
+  - Confusion Matrix（混淆矩阵）：Nature 风格配色，支持多分类，显示百分比+绝对值
+  - ROC/AUC Curve：二分类单曲线，多分类 OvR，micro/macro AUC
+  - t-SNE 可视化：2D/3D 降维，按真实标签着色
+  - Signal with Labels：信号时序图 + 类别标注区域
+- **依赖**：matplotlib, scikit-learn（无需 LaTeX）
+- **集成**：app.py 训练完成后自动生成图表，Gradio Plot 组件展示
+
 ## 迭代 Roadmap
 - [x] 解决 SHAP 与 torch 的 numpy 版本冲突（通过验证：shap 0.51.0 兼容 numpy 1.26.4）
 - [x] 增加 LightGBM 作为 GB 分类器的后端选项
 - [x] 增加 K-Fold 交叉验证
 - [x] 增加模型对比功能
+- [x] 增加可视化模块（Confusion Matrix / ROC / t-SNE / Signal）
 - [ ] 增加 SHAP beeswarm 决策图（可优化）
 - [ ] CNN1D 小数据集稳定性改善（数据增强、dropout 调整）
 - [ ] API 服务化（FastAPI）

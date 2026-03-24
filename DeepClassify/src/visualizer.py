@@ -148,7 +148,6 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight', 
                        facecolor='white', edgecolor='none')
         
-        plt.close(fig)
         return fig
     
     def plot_roc_curve(self, y_true, y_proba, labels, save_path=None,
@@ -201,11 +200,24 @@ class ClassifyVisualizer:
                        label=f'{label} (AUC = {roc_auc:.3f})')
                 auc_scores[label] = roc_auc
             
-            # Micro-average ROC
-            if show_micro:
-                fpr["micro"], tpr["micro"], _ = roc_curve(y_true, y_proba)
-                roc_auc_micro = auc(fpr["micro"], tpr["micro"])
-                ax.plot(fpr["micro"], tpr["micro"], color='navy', linewidth=2,
+            # Micro-average ROC (使用 One-vs-Rest 聚合)
+            if show_micro and n_classes > 2:
+                # 对于多分类，micro-average 需要特殊处理
+                # 计算每个样本的最大概率对应的类别
+                y_true_binary = np.zeros((len(y_true), n_classes))
+                for i in range(n_classes):
+                    y_true_binary[:, i] = (y_true == i).astype(int)
+                
+                # 聚合所有类的 TPR 和 FPR
+                fpr_micro = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+                tpr_micro = np.zeros_like(fpr_micro)
+                for i in range(n_classes):
+                    tpr_micro_interp = np.interp(fpr_micro, fpr[i], tpr[i])
+                    tpr_micro += tpr_micro_interp * np.sum(y_true == i)
+                tpr_micro /= len(y_true)
+                roc_auc_micro = auc(fpr_micro, tpr_micro)
+                
+                ax.plot(fpr_micro, tpr_micro, color='navy', linewidth=2,
                        linestyle='--', label=f'Micro-average (AUC = {roc_auc_micro:.3f})')
                 auc_scores['micro'] = roc_auc_micro
             
@@ -233,7 +245,6 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
-        plt.close(fig)
         return fig, auc_scores
     
     def plot_tsne(self, X_features, labels, y_true, save_path=None,
@@ -269,7 +280,7 @@ class ClassifyVisualizer:
         
         # t-SNE 降维
         tsne = TSNE(n_components=dimension, perplexity=perplexity,
-                   n_iter=n_iter, random_state=random_state,
+                   max_iter=n_iter, random_state=random_state,
                    init='pca', learning_rate='auto')
         
         if dimension == 2:
@@ -330,7 +341,6 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
-        plt.close(fig)
         return fig
     
     def plot_signal_with_labels(self, signal, labels, sample_rate=1, save_path=None,
@@ -427,7 +437,6 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
-        plt.close(fig)
         return fig
 
 
