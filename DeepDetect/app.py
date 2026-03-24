@@ -1,0 +1,343 @@
+"""
+DeepDetect - 异常检测 Web 界面
+基于 Gradio 构建
+"""
+
+import gradio as gr
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # 非交互式后端
+
+from src.core.data_loader import DataLoader
+from src.core.eval import evaluate_detector, format_metrics_table
+from src.models.isolation_forest import IsolationForestDetector
+from src.models.autoencoder import AutoencoderDetector
+from src.models.ocsvm import OCSVMDetector
+from src.models.lof_detector import LOFDetector
+from src.models.stats_detector import StatsDetector
+
+# 检测器注册表
+DETECTOR_REGISTRY = {
+    'IsolationForest': IsolationForestDetector,
+    'Autoencoder': AutoencoderDetector,
+    'OneClassSVM': OCSVMDetector,
+    'LOF': LOFDetector,
+    'Stats_ZScore': lambda **kw: StatsDetector(method='zscore', **kw),
+    'Stats_IQR': lambda **kw: StatsDetector(method='iqr', **kw),
+}
+
+DETECTOR_LIST = list(DETECTOR_REGISTRY.keys())
+
+# 全局状态
+state = {
+    'data_loader': None,
+    'detector': None,
+    'X': None,
+    'y': None,
+    'labels': None,
+    'scores': None,
+    'eval_results': None,
+}
+
+
+def load_data(file_obj, label_col):
+    """加载CSV数据"""
+    try:
+        dl = DataLoader()
+        if hasattr(file_obj, 'read'):
+            bytes_data = file_obj.read()
+            success, msg = dl.load_from_bytes(bytes_data, getattr(file_obj, 'name', 'upload.csv'))
+        else:
+            success, msg = dl.load_csv(file_obj)
+
+        if not success:
+            return None, msg, gr.update(), gr.update()
+
+        state['data_loader'] = dl
+
+        # 自动设置标签列
+        if label_col and label_col in dl.df.columns:
+            dl.set_label_column(label_col)
+
+        numeric_cols = dl.get_numeric_columns()
+
+        # 数据预览
+        preview = dl.get_preview(30)
+
+        # 数据统计
+        summary = dl.get_summary()
+        stats_md = f"""
+**数据形状**: {summary['shape']}  
+**数值列**: {len(numeric_cols)}  
+**缺失值**: {len(summary['missing_info'])} 列有缺失值
+"""
+        if numeric_cols:
+            stats_md += f"\n\n**数值列预览**:\n```\n{preview[numeric_cols].to_string(max_cols=6)}\n```"
+
+        col_dropdown = gr.update(choices=numeric_cols, value=numeric_cols[0] if numeric_cols else None)
+
+        return preview, stats_md, col_dropdown, gr.update()
+
+    except Exception as e:
+        return None, f"加载失败: {str(e)}", gr.update(), gr.update()
+
+
+def detect_anomalies(target_col, detector_name, contamination, threshold_mode,
+                      custom_threshold, z_threshold, iqr_factor, epochs, batch_size,
+                      n_estimators, n_neighbors, has_label):
+    """执行异常检测"""
+    try:
+        dl = state['data_loader']
+        if dl is None:
+            return None, "请先加载数据", None, None
+
+        # 获取数据
+        X, y = dl.get_all_numeric_data(handle_missing='mean')
+
+        if target_col and target_col in X.columns:
+            # 使用指定列作为目标，其他列作为特征
+            feature_cols = [c for c in X.columns if c != target_col]
+            if feature_cols:
+                X = X[feature_cols]
+            else:
+                X = X[[target_col]]
+
+        if X.empty or X.shape[1] == 0:
+            return None, "没有可用的数值特征", None, None
+
+        # 构建检测器
+        detector_cls = DETECTOR_REGISTRY.get(detector_name)
+        if detector_cls is None:
+            return None, f"未知检测器: {detector_name}", None, None
+
+        # 参数
+        params = {'contamination': contamination}
+        if detector_name == 'Autoencoder':
+            params.update({'epochs': epochs, 'batch_size': batch_size})
+        elif detector_name == 'Stats_ZScore':
+            params.update({'z_threshold': z_threshold})
+        elif detector_name == 'Stats_IQR':
+            params.update({'iqr_factor': iqr_factor})
+        elif detector_name == 'IsolationForest':
+            params.update({'n_estimators': n_estimators})
+        elif detector_name == 'LOF':
+            params.update({'n_neighbors': n_neighbors})
+
+        detector = detector_cls(**params)
+        detector.fit(X.values)
+
+        # 预测
+        scores = detector.score_samples(X.values)
+        threshold = custom_threshold if threshold_mode == 'custom' else detector.get_threshold()
+        labels = (scores > threshold).astype(int)
+
+        state['detector'] = detector
+        state['X'] = X
+        state['y'] = y
+        state['labels'] = labels
+        state['scores'] = scores
+        state['threshold'] = threshold
+
+        # 评估
+        y_true = y.values if y is not None else None
+        eval_results = evaluate_detector(y_true, labels, scores)
+        state['eval_results'] = eval_results
+
+        metrics_text = format_metrics_table(eval_results)
+
+        # 生成可视化
+        fig = plot_results(X, scores, labels, threshold)
+
+        return fig, metrics_text, gr.update(), gr.update()
+
+    except Exception as e:
+        import traceback
+        return None, f"检测失败: {str(e)}\n{traceback.format_exc()}", None, None
+
+
+def plot_results(X, scores, labels, threshold):
+    """生成可视化图表"""
+    n_samples = len(X)
+    n_anomalies = int(np.sum(labels))
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    # 1. 如果是单列时序数据，绘制时序图
+    if X.shape[1] == 1:
+        ax = axes[0, 0]
+        x_values = X.values.flatten()
+        idx = np.arange(n_samples)
+        ax.plot(idx, x_values, 'b-', alpha=0.6, label='Data')
+        anomaly_idx = np.where(labels == 1)[0]
+        if len(anomaly_idx) > 0:
+            ax.scatter(anomaly_idx, x_values[anomaly_idx], c='red', s=30, zorder=5, label=f'Anomalies ({n_anomalies})')
+        ax.set_xlabel('Index')
+        ax.set_ylabel(X.columns[0])
+        ax.set_title('Time Series with Anomalies')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    else:
+        # 多维数据：绘制第一个特征的时序
+        ax = axes[0, 0]
+        x_values = X.values[:, 0]
+        idx = np.arange(n_samples)
+        ax.plot(idx, x_values, 'b-', alpha=0.6)
+        anomaly_idx = np.where(labels == 1)[0]
+        if len(anomaly_idx) > 0:
+            ax.scatter(anomaly_idx, x_values[anomaly_idx], c='red', s=30, zorder=5)
+        ax.set_xlabel('Index')
+        ax.set_ylabel(X.columns[0])
+        ax.set_title(f'First Feature with Anomalies ({n_anomalies})')
+        ax.grid(True, alpha=0.3)
+
+    # 2. 异常分数时间序列
+    ax = axes[0, 1]
+    ax.plot(idx, scores, 'b-', alpha=0.6, label='Anomaly Score')
+    ax.axhline(y=threshold, color='r', linestyle='--', label=f'Threshold ({threshold:.3f})')
+    if len(anomaly_idx) > 0:
+        ax.scatter(anomaly_idx, scores[anomaly_idx], c='red', s=30, zorder=5, label='Anomalies')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Score')
+    ax.set_title('Anomaly Scores Over Time')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # 3. 分数分布直方图
+    ax = axes[1, 0]
+    ax.hist(scores, bins=50, alpha=0.7, color='steelblue', edgecolor='black')
+    ax.axvline(x=threshold, color='r', linestyle='--', linewidth=2, label=f'Threshold ({threshold:.3f})')
+    ax.set_xlabel('Anomaly Score')
+    ax.set_ylabel('Frequency')
+    ax.set_title('Score Distribution')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # 4. 正常 vs 异常分数箱线图
+    ax = axes[1, 1]
+    normal_scores = scores[labels == 0]
+    anomaly_scores = scores[labels == 1]
+    data_to_plot = [normal_scores, anomaly_scores]
+    bp = ax.boxplot(data_to_plot, labels=['Normal', 'Anomaly'], patch_artist=True)
+    bp['boxes'][0].set_facecolor('lightblue')
+    bp['boxes'][1].set_facecolor('lightcoral')
+    ax.set_ylabel('Anomaly Score')
+    ax.set_title('Score Comparison')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    return fig
+
+
+def export_results():
+    """导出带标签的结果"""
+    dl = state['data_loader']
+    X = state['X']
+    labels = state['labels']
+    scores = state['scores']
+
+    if dl is None or X is None or labels is None:
+        return None, "没有可导出的结果"
+
+    try:
+        result_df = dl.export_with_labels(X, labels, scores)
+
+        # 保存到临时CSV
+        output_path = "anomaly_detection_results.csv"
+        result_df.to_csv(output_path, index=False)
+
+        return output_path, f"已导出 {len(result_df)} 行结果到 {output_path}"
+    except Exception as e:
+        return None, f"导出失败: {str(e)}"
+
+
+def create_demo():
+    """构建 Gradio 界面"""
+    with gr.Blocks(title="DeepDetect - 异常检测") as demo:
+        gr.Markdown("# 🔍 DeepDetect - 异常检测系统")
+        gr.Markdown("上传时序数据，自动检测异常点。支持有标签和无监督两种模式。")
+
+        with gr.Tabs():
+            # ===== Tab 1: 数据加载 =====
+            with gr.TabItem("📂 数据加载"):
+                with gr.Row():
+                    with gr.Column():
+                        file_input = gr.File(label="上传 CSV 文件", file_types=[".csv"])
+                        label_col_input = gr.Textbox(label="标签列名（可选，如有标签）", placeholder="如: label, target, is_anomaly")
+                        load_btn = gr.Button("加载数据", variant="primary")
+
+                    with gr.Column():
+                        data_preview = gr.DataFrame(label="数据预览")
+                        data_info = gr.Markdown("请上传CSV文件...")
+
+                load_btn.click(
+                    fn=load_data,
+                    inputs=[file_input, label_col_input],
+                    outputs=[data_preview, data_info]
+                )
+
+            # ===== Tab 2: 检测配置 =====
+            with gr.TabItem("⚙️ 检测配置"):
+                with gr.Row():
+                    with gr.Column():
+                        target_col = gr.Dropdown(label="目标检测列（留空则用全部数值列）", choices=[])
+                        detector_name = gr.Dropdown(
+                            label="检测方法",
+                            choices=DETECTOR_LIST,
+                            value=DETECTOR_LIST[0]
+                        )
+                        gr.Markdown("### 参数配置")
+                        contamination = gr.Slider(0.01, 0.5, value=0.1, step=0.01, label="contamination（预期异常比例）")
+
+                        with gr.Accordion("高级参数", open=False):
+                            threshold_mode = gr.Radio(["auto", "custom"], value="auto", label="阈值模式")
+                            custom_threshold = gr.Number(label="自定义阈值", value=0.5)
+                            z_threshold = gr.Slider(1.0, 5.0, value=3.0, step=0.1, label="Z-score 阈值")
+                            iqr_factor = gr.Slider(1.0, 3.0, value=1.5, step=0.1, label="IQR 因子")
+                            epochs = gr.Slider(10, 500, value=100, step=10, label="Autoencoder 训练轮数")
+                            batch_size = gr.Slider(8, 256, value=32, step=8, label="Batch Size")
+                            n_estimators = gr.Slider(10, 200, value=100, step=10, label="IsolationForest 树数量")
+                            n_neighbors = gr.Slider(5, 50, value=20, step=1, label="LOF 近邻数")
+
+                        detect_btn = gr.Button("开始检测", variant="primary", size="lg")
+
+                    with gr.Column():
+                        metrics_output = gr.Textbox(label="评估指标", lines=15, show_label=True)
+
+                detect_btn.click(
+                    fn=detect_anomalies,
+                    inputs=[target_col, detector_name, contamination, threshold_mode,
+                            custom_threshold, z_threshold, iqr_factor, epochs, batch_size,
+                            n_estimators, n_neighbors, gr.State()],
+                    outputs=[gr.Plot(), metrics_output]
+                )
+
+            # ===== Tab 3: 可视化 =====
+            with gr.TabItem("📊 检测结果"):
+                gr.Markdown("### 时序图 & 异常标注")
+                plot_output = gr.Plot(label="检测可视化")
+
+            # ===== Tab 4: 导出 =====
+            with gr.TabItem("💾 导出结果"):
+                gr.Markdown("### 导出带异常标签的数据")
+                export_btn = gr.Button("导出 CSV", variant="primary")
+                export_status = gr.Textbox(label="状态")
+                export_file = gr.File(label="下载文件")
+
+                export_btn.click(
+                    fn=export_results,
+                    inputs=[],
+                    outputs=[export_file, export_status]
+                )
+
+    return demo
+
+
+if __name__ == "__main__":
+    demo = create_demo()
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7861,
+        share=False
+    )

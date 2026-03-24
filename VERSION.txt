@@ -1,0 +1,3 @@
+Deep-Research v1.01
+Date: 2026-03-24
+Modules: DeepPredict (时序预测) | DeepClassify (信号分类) | DeepDetect (异常检测)
