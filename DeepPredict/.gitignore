@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug & Test files
+debug*.py
+debug*.txt
+test*.py
+test*.txt
+benchmark*.py
+benchmark*.txt
+check_*.py
+fix_*.py
+exp_*.py
+*.log
+
+# Gradio
+gradio/**/cache/
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup
+*.bak
+*.backup
+
+# Windows
+*.bat
+*.ps1
+
+# Others
+__pycache__/
+*.tmp
