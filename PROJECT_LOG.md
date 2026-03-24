@@ -54,6 +54,21 @@
 
 ---
 
+## 2026-03-24（文献调研与图表规划）
+
+### 子刊文献调研完成
+- **报告**：`docs/LITERATURE_REVIEW_VISUALIZATION.md`
+- **文献数**：200 篇（Nature/Science/Cell 子刊 2023-2026）
+- **图表记录**：234 条
+- **三大任务文献**：DeepPredict 36篇 / DeepClassify 45篇 / DeepDetect 36篇
+- **高频图表**：Confusion Matrix 18%、时序预测图 16.3%、ROC-AUC 12%
+- **Git**：`36140cb`
+
+### 各模块应补充的图表
+- **DeepPredict**：相关热力图、误差分布、滚动预测图
+- **DeepClassify**：SHAP Decision Plot、信号标注图、特征热图
+- **DeepDetect**：异常区间可视化、PR曲线、异常类型分类图
+
 ## 2026-03-24（团队重组）
 
 ### 团队架构更新（身份固定原则生效）
