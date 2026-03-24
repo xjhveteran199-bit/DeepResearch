@@ -5,29 +5,16 @@ DeepClassify 可视化模块
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
 
-# 尝试导入 scienceplots
-try:
-    import scienceplots
-    plt.style.use(['science', 'nature'])
-except ImportError:
-    # 回退到基础样式
-    plt.rcParams.update({
-        'font.size': 10,
-        'axes.titlesize': 12,
-        'axes.labelsize': 10,
-        'xtick.labelsize': 8,
-        'ytick.labelsize': 8,
-        'legend.fontsize': 9,
-        'figure.titlesize': 12,
-        'axes.grid': True,
-        'grid.alpha': 0.3,
-    })
+# 强制禁用 LaTeX (避免找不到 latex.exe 错误)
+matplotlib.rcParams['text.usetex'] = False
+matplotlib.rcParams['font.family'] = 'sans-serif'
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
 
-import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import roc_curve, auc, confusion_matrix
 from sklearn.manifold import TSNE
 import warnings
@@ -48,6 +35,22 @@ NATURE_PALETTE = [
 ]
 
 
+# Nature 风格配置
+NATURE_STYLE = {
+    'font.size': 10,
+    'axes.titlesize': 12,
+    'axes.labelsize': 10,
+    'xtick.labelsize': 8,
+    'ytick.labelsize': 8,
+    'legend.fontsize': 9,
+    'figure.titlesize': 12,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+}
+
+
 class ClassifyVisualizer:
     """分类任务可视化工具类"""
     
@@ -62,6 +65,8 @@ class ClassifyVisualizer:
         self.dpi = dpi
         self.figsize = figsize
         self.palette = NATURE_PALETTE
+        # 应用 Nature 风格
+        plt.rcParams.update(NATURE_STYLE)
     
     def plot_confusion_matrix(self, y_true, y_pred, labels, save_path=None,
                              show_percent=True, show_values=True,
@@ -108,11 +113,27 @@ class ClassifyVisualizer:
                 else:
                     annot_text[i, j] = ''
         
-        # 绘制热力图
-        sns.heatmap(cm, annot=annot_text, fmt='', cmap=cmap, 
-                    xticklabels=labels, yticklabels=labels,
-                    ax=ax, cbar_kws={'label': 'Count'},
-                    annot_kws={'size': 9, 'ha': 'center', 'va': 'center'})
+        # 绘制热力图（纯 matplotlib）
+        im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+        
+        # 添加颜色条
+        cbar = ax.figure.colorbar(im, ax=ax)
+        cbar.set_label('Count', rotation=270, labelpad=15)
+        
+        # 设置刻度标签
+        ax.set_xticks(np.arange(len(labels)))
+        ax.set_yticks(np.arange(len(labels)))
+        ax.set_xticklabels(labels)
+        ax.set_yticklabels(labels)
+        
+        # 添加数值标注
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                color = "white" if cm[i, j] > thresh else "black"
+                text = annot_text[i, j]
+                if text:
+                    ax.text(j, i, text, ha="center", va="center", color=color, fontsize=9)
         
         ax.set_xlabel('Predicted Label', fontweight='medium')
         ax.set_ylabel('True Label', fontweight='medium')
@@ -120,7 +141,6 @@ class ClassifyVisualizer:
         
         # 调整刻度标签角度
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
         
         plt.tight_layout()
         
@@ -128,6 +148,7 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight', 
                        facecolor='white', edgecolor='none')
         
+        plt.close(fig)
         return fig
     
     def plot_roc_curve(self, y_true, y_proba, labels, save_path=None,
@@ -212,6 +233,7 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
+        plt.close(fig)
         return fig, auc_scores
     
     def plot_tsne(self, X_features, labels, y_true, save_path=None,
@@ -308,6 +330,7 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
+        plt.close(fig)
         return fig
     
     def plot_signal_with_labels(self, signal, labels, sample_rate=1, save_path=None,
@@ -404,6 +427,7 @@ class ClassifyVisualizer:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches='tight',
                        facecolor='white', edgecolor='none')
         
+        plt.close(fig)
         return fig
 
 
