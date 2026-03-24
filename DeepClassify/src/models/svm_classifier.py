@@ -35,7 +35,7 @@ class SVMClassifier(ClassifierBase):
         **kwargs
     ) -> Tuple[bool, str]:
         try:
-            from ..core.metrics import ClassificationMetrics
+            from core.metrics import ClassificationMetrics
 
             X_arr = np.array(X_train, dtype=np.float32)
             y_arr = np.array(y_train)

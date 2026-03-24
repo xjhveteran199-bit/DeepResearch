@@ -39,6 +39,24 @@
 - SHAP DeepExplainer（torch）不可用：torch 2.2.0 与 shap 0.51.0 的组合在当前环境测试 SHAP TreeExplainer 正常工作
 - SHAP KernelExplainer 用于 CNN1D（慢但可用）：`shap.KernelExplainer(predict_fn, background)`
 
+## BUG 修复记录（2026-03-24）
+- **BUG**：所有分类器（RF/GB/SVM/CNN1D）的 `fit()` 方法中使用 `from ..core.metrics import ClassificationMetrics` 相对导入，在直接运行脚本时导致 `ImportError: attempted relative import beyond top-level package`
+- **修复**：将所有分类器中的 `from ..core.metrics` 改为 `from core.metrics`（绝对导入）
+- **涉及文件**：`src/models/rf_classifier.py`、`src/models/gb_classifier.py`、`src/models/svm_classifier.py`、`src/models/cnn1d_classifier.py`
+
+## 测试记录（2026-03-24）
+- **数据集**：Iris（150行 × 5列，3类均衡分布）
+- **模型**：RandomForest（n_estimators=100, max_depth=10）
+- **结果**：
+  - Accuracy：93.33% ✅（≥90%）
+  - F1(weighted)：93.33% ✅（≥90%）
+  - Confusion Matrix：正确输出 3×3 矩阵
+  - ROC 曲线：正常绘制（3 classes, AUC=1.0/0.975/0.985）
+  - 5-Fold CV Accuracy：94.67% ✅
+  - SHAP：TreeExplainer 正常输出 shap_values ✅
+  - GradientBoosting：同样测试通过（Accuracy=93.33%）✅
+- **Gradio 服务**：未启动 Web UI（调试直接在 Python 层完成）
+
 ## 迭代 Roadmap
 - [x] 解决 SHAP 与 torch 的 numpy 版本冲突（通过验证：shap 0.51.0 兼容 numpy 1.26.4）
 - [x] 增加 LightGBM 作为 GB 分类器的后端选项

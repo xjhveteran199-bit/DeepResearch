@@ -247,7 +247,7 @@ class CNN1DClassifyWrapper(ClassifierBase):
                 test_pred = self._model(X_vl.to(self.device))
                 y_pred_labels = test_pred.argmax(dim=1).cpu().numpy()
 
-            from ..core.metrics import ClassificationMetrics
+            from core.metrics import ClassificationMetrics
             metrics_calc = ClassificationMetrics()
             y_vl_np = y_vl_enc.astype(int)
             self.metrics = metrics_calc.compute(
