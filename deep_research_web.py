@@ -299,13 +299,13 @@ class DPPredictor:
             fig_imp = self.shap_analyzer.plot_importance()
             if fig_imp:
                 imp_path = os.path.join(tempfile.gettempdir(), f"shap_importance_{uuid.uuid4().hex[:8]}.png")
-                fig_imp.savefig(imp_path, format='png', dpi=120, bbox_inches='tight')
+                fig_imp.savefig(imp_path, format='png', dpi=300, bbox_inches='tight')
                 figs['importance'] = imp_path
 
             fig_beeswarm = self.shap_analyzer.plot_beeswarm()
             if fig_beeswarm:
                 bsw_path = os.path.join(tempfile.gettempdir(), f"shap_beeswarm_{uuid.uuid4().hex[:8]}.png")
-                fig_beeswarm.savefig(bsw_path, format='png', dpi=120, bbox_inches='tight')
+                fig_beeswarm.savefig(bsw_path, format='png', dpi=300, bbox_inches='tight')
                 figs['beeswarm'] = bsw_path
 
             self.shap_figures = figs
@@ -516,6 +516,9 @@ def build_deep_predict_ui():
             preds = _dp_predictor.predict(X_df)
             if preds is None:
                 return None
+            # 自动运行 SHAP 分析（如尚未运行），确保 ZIP 包含 SHAP 图表
+            if not _dp_predictor.shap_figures and not _dp_predictor._is_lstm and not _dp_predictor._is_patchtst:
+                figs, _ = _dp_predictor.run_shap_analysis(X_df)
             return _dp_predictor.download_package(X_df, y_series, preds)
 
         download_btn.click(on_download, inputs=[], outputs=[download_file])
@@ -985,7 +988,7 @@ def _build_deep_detect_ui():
             eval_results = evaluate_detector(y_true, labels, scores)
             metrics_text = format_metrics_table(eval_results)
 
-            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=300)
             idx = np.arange(len(X))
 
             # 时序图
