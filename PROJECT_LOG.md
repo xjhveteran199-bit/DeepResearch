@@ -162,4 +162,23 @@
 
 ---
 
-*最后更新：2026-03-24 10:46 GMT+8*
+## 2026-03-25（DeepPredict 迁移整合完成）
+
+### DeepPredict 迁移整合
+- **来源**: `C:\Users\XJH\DeepPredict\` (独立项目)
+- **目标**: `C:\Users\XJH\DeepResearch\DeepPredict\`
+- **迁移文件**:
+  - `src/` (core/, data/, models/, ui/, utils/, visualizer.py) — 19 个 Python 文件
+  - `deeppredict_web.py` — Gradio Web 界面
+  - `requirements.txt` — 依赖清单
+  - `README.md` — 项目文档
+  - `web/` (backend/, frontend/, static/, templates/) — Web 资源，10 个文件
+- **忽略**: `.venv/`, `__pycache__/`, `.idea/`, `test_data/`, 临时调试文件
+- **状态**: ✅ 迁移完成
+
+### Git 提交
+- Commit: `xxxxxxxx` — Migrate: 整合 DeepPredict 独立项目到 DeepResearch/DeepPredict
+
+---
+
+*最后更新：2026-03-25 07:58 GMT+8*
