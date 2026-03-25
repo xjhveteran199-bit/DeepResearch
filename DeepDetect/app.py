@@ -9,6 +9,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
+import io
+import tempfile
+from datetime import datetime
 
 from src.core.data_loader import DataLoader
 from src.core.eval import evaluate_detector, format_metrics_table, find_anomaly_intervals
@@ -312,11 +315,16 @@ def export_results():
     try:
         result_df = dl.export_with_labels(X, labels, scores)
 
-        # 保存到临时CSV
-        output_path = "anomaly_detection_results.csv"
-        result_df.to_csv(output_path, index=False)
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"anomaly_results_{timestamp}.csv"
 
-        return output_path, f"已导出 {len(result_df)} 行结果到 {output_path}"
+        # 写入 BytesIO 缓冲区供 Gradio 下载
+        buffer = io.BytesIO()
+        result_df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        return buffer, f"已导出 {len(result_df)} 行结果到 {filename}"
     except Exception as e:
         return None, f"导出失败: {str(e)}"
 
