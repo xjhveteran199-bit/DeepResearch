@@ -51,6 +51,35 @@ NATURE_STYLE = {
 }
 
 
+# ============================================================
+# Nature 期刊风格增强（无 LaTeX 纯 matplotlib 版本）
+# ============================================================
+import matplotlib as mpl
+
+# 应用 Nature 风格参数
+mpl.rcParams.update({
+    'font.size': 10,
+    'axes.titlesize': 12,
+    'axes.labelsize': 10,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 9,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+    'grid.linestyle': '--',
+    'axes.linewidth': 0.8,
+    'xtick.major.width': 0.8,
+    'ytick.major.width': 0.8,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans', 'Helvetica'],
+    'text.usetex': False,
+})
+
+
 class ClassifyVisualizer:
     """分类任务可视化工具类"""
     
@@ -65,8 +94,21 @@ class ClassifyVisualizer:
         self.dpi = dpi
         self.figsize = figsize
         self.palette = NATURE_PALETTE
-        # 应用 Nature 风格
-        plt.rcParams.update(NATURE_STYLE)
+        # 应用增强 Nature 风格
+        import matplotlib as mpl
+        mpl.rcParams.update({
+            'font.size': 10,
+            'axes.titlesize': 12,
+            'axes.labelsize': 10,
+            'axes.spines.top': False,
+            'axes.spines.right': False,
+            'axes.grid': True,
+            'grid.alpha': 0.3,
+            'grid.linestyle': '--',
+            'axes.linewidth': 0.8,
+            'figure.dpi': 150,
+            'savefig.dpi': 300,
+        })
     
     def plot_confusion_matrix(self, y_true, y_pred, labels, save_path=None,
                              show_percent=True, show_values=True,
