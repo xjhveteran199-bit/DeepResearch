@@ -690,6 +690,7 @@ def _build_deep_classify_ui():
             return "❌ 请先加载数据并选择列", "", "", None, None, state
         try:
             X = state['X']
+            y = state['y']
             y_enc = state['y_enc']
             le = state['le']
             class_names = state['class_names']
