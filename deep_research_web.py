@@ -1005,16 +1005,27 @@ def _build_deep_detect_ui():
         labels = state['labels']
         scores = state['scores']
         if loader is None or X is None or labels is None:
-            return None
+            return None, "❌ 没有可导出的结果"
         try:
             result_df = loader.export_with_labels(X, labels, scores)
-            path = "C:\\Users\\XJH\\DeepResearch\\DeepDetect\\anomaly_results.csv"
-            result_df.to_csv(path, index=False)
-            return path
-        except Exception as e:
-            return None
 
-    dd_export_btn.click(dd_on_export, inputs=[dd_state], outputs=[dd_export_file])
+            # 使用临时文件（与 DeepDetect/app.py 的 840a3b1 修复保持一致）
+            import tempfile, os, time
+            filename = f"anomaly_results_{int(time.time())}.csv"
+            filepath = os.path.join(tempfile.gettempdir(), filename)
+            result_df.to_csv(filepath, index=False, encoding='utf-8')
+
+            # 验证文件内容
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            file_size = os.path.getsize(filepath)
+
+            return filepath, f"✅ 已导出 {len(result_df)} 行到 {filename}（{file_size} bytes）"
+        except Exception as e:
+            import traceback
+            return None, f"❌ 导出失败: {str(e)}\n{traceback.format_exc()}"
+
+    dd_export_btn.click(dd_on_export, inputs=[dd_state], outputs=[dd_export_file, dd_status])
 
     return dd_state
 
