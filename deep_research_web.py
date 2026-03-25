@@ -482,11 +482,13 @@ def build_deep_predict_ui():
 
         def on_download():
             global _dp_loader, _dp_predictor, _dp_x_cols, _dp_y_col
-            if not _dp_predictor.is_fitted:
+            if _dp_predictor is None or not _dp_predictor.is_fitted:
                 return None
             X_df = _dp_loader.df[_dp_x_cols]
             y_series = _dp_loader.df[_dp_y_col]
             preds = _dp_predictor.predict(X_df)
+            if preds is None:
+                return None
             return _dp_predictor.download_package(X_df, y_series, preds)
 
         download_btn.click(on_download, inputs=[], outputs=[download_file])
@@ -699,18 +701,16 @@ def _build_deep_classify_ui():
             y_proba = clf.predict_proba(X_te)
 
             mc = ClassificationMetrics()
-            # y_te is numeric (LabelEncoder output), y_pred is string (inverse_transform output)
-            # → convert both to same numeric type for metrics computation
+            # y_te and y_pred are both numeric (LabelEncoder output and clf.predict output)
+            # → both are already 0/1/2 indices, no transform needed
             y_te_num = np.array(y_te, dtype=int)
-            y_pred_num = le.transform(np.array(y_pred, dtype=str))
+            y_pred_num = np.array(y_pred, dtype=int)
             full_metrics = mc.compute(
                 y_true=y_te_num, y_pred=y_pred_num,
                 y_proba=y_proba, labels=list(range(len(class_names))))
 
-            # 混淆矩阵 HTML（统一为字符串避免类型混合）
-            y_te_str = np.array(y_te, dtype=str)
-            y_pred_str = np.array(y_pred, dtype=str)
-            cm = confusion_matrix(y_te_str, y_pred_str)
+            # 混淆矩阵（y_te 和 y_pred 都是数值索引，直接用 numeric）
+            cm = confusion_matrix(y_te_num, y_pred_num, labels=list(range(len(class_names))))
             cm_rows = []
             cm_rows.append("<tr><th></th>" + "".join([f"<th>{l}</th>" for l in class_names]) + "</tr>")
             for i, row in enumerate(cm):
