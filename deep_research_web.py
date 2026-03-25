@@ -495,15 +495,15 @@ def _build_deep_classify_ui():
     _sys.path.insert(0, str(DEEP_CLASSIFY_PATH))
     _sys.path.insert(0, str(DEEP_CLASSIFY_PATH / "src"))
 
-    from DeepClassify.src.core.data_loader import DataLoader as DCLDataLoader
-    from DeepClassify.src.core.metrics import ClassificationMetrics
+    from core.data_loader import DataLoader as DCLDataLoader
+    from core.metrics import ClassificationMetrics
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import confusion_matrix, roc_curve, auc
     import matplotlib.pyplot as plt
 
     # torch 可能因 numpy 版本问题导入失败，单独处理
     try:
-        from DeepClassify.src.models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
+        from models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
         HAS_TORCH = True
     except Exception as _e:
         HAS_TORCH = False
