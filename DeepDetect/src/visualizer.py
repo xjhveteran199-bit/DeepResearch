@@ -18,6 +18,63 @@ except ImportError:
     import warnings
     warnings.warn("scienceplots not installed. Using default matplotlib style.")
 
+# ============================================================
+# Nature 期刊配色方案（无需 LaTeX，纯 matplotlib 实现）
+# ============================================================
+import matplotlib as mpl
+
+# Nature 官方配色（7色）
+NATURE_COLORS = [
+    '#E64B35',  # 红色
+    '#4DBBD5',  # 青色
+    '#00A087',  # 绿色
+    '#3C5488',  # 深蓝
+    '#F39B7F',  # 橙色
+    '#8491B4',  # 灰蓝
+    '#91D1C2',  # 浅绿
+]
+
+# 设置全局配色
+mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=NATURE_COLORS)
+
+# Nature 风格参数（无 LaTeX）
+mpl.rcParams.update({
+    'font.size': 10,
+    'axes.titlesize': 12,
+    'axes.labelsize': 10,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 9,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+    'grid.linestyle': '--',
+    'axes.linewidth': 0.8,
+    'xtick.major.width': 0.8,
+    'ytick.major.width': 0.8,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans', 'Helvetica'],
+    'text.usetex': False,  # 强制禁用 LaTeX
+})
+
+def apply_nature_style():
+    """在绘制图表前调用以应用 Nature 风格"""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    mpl.rcParams.update({
+        'font.size': 10,
+        'axes.titlesize': 12,
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'axes.grid': True,
+        'grid.alpha': 0.3,
+        'grid.linestyle': '--',
+        'axes.linewidth': 0.8,
+    })
+
 
 class DetectVisualizer:
     """异常检测可视化器"""
@@ -32,17 +89,21 @@ class DetectVisualizer:
         'anomaly_bg': '#FFB6C1',  # 浅红色 - 异常区间背景
     }
     
+    def __init__(self, dpi=300, figsize=(12, 6)):
+        """初始化可视化器
+        
+        Args:
+            dpi: 图表分辨率
+            figsize: 图表大小 (width, height)
+        """
+        self.dpi = dpi
+        self.figsize = figsize
+        apply_nature_style()
+    
     @classmethod
     def _setup_style(cls):
         """设置图表样式"""
-        if HAS_SCIENCEPLOTS:
-            try:
-                plt.style.use(['science', 'nature'])
-            except Exception:
-                plt.style.use('seaborn-v0_8-whitegrid')
-        else:
-            plt.style.use('seaborn-v0_8-whitegrid')
-        
+        apply_nature_style()
         # 禁用 LaTeX 渲染（避免需要安装 LaTeX）
         plt.rcParams['text.usetex'] = False
         plt.rcParams['font.family'] = 'sans-serif'
@@ -51,21 +112,20 @@ class DetectVisualizer:
         plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
         plt.rcParams['axes.unicode_minus'] = False
     
-    @classmethod
     def plot_anomaly_timeseries(
-        cls,
+        self,
         times,
         values,
-        labels,
-        scores,
-        threshold,
+        labels=None,
+        scores=None,
+        threshold=None,
         interval_df=None,
         save_path=None,
         title="Time Series Anomaly Detection",
         ylabel="Value",
         xlabel="Time Index",
-        figsize=(12, 6),
-        dpi=300,
+        figsize=None,
+        dpi=None,
         show_legend=True,
         show_grid=True,
         max_points=None
@@ -93,7 +153,18 @@ class DetectVisualizer:
         Returns:
             matplotlib.figure.Figure
         """
-        cls._setup_style()
+        self._setup_style()
+        
+        # 兼容 DataFrame 输入（简化 API）
+        if isinstance(times, pd.DataFrame):
+            df_input = times
+            scores = values  # second positional arg is scores
+            values = df_input['value'].values
+            times = df_input['timestamp'].values
+            # 自动从 scores 推断 labels 和 threshold
+            if threshold is None:
+                threshold = np.percentile(scores, 95)
+            labels = (scores > threshold).astype(int)
         
         # 数据降采样处理大数据
         if max_points and len(values) > max_points:
@@ -105,35 +176,35 @@ class DetectVisualizer:
             scores = np.array(scores)[indices]
         
         # 创建图表 - 主坐标轴 + 次坐标轴
-        fig, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
+        fig, ax1 = plt.subplots(figsize=figsize or self.figsize, dpi=dpi or self.dpi)
         
         # 主坐标轴：时序数据
-        ax1.plot(times, values, color=cls.COLORS['data'], linewidth=1.0, 
+        ax1.plot(times, values, color=self.COLORS['data'], linewidth=1.0, 
                  alpha=0.8, label='Time Series', zorder=1)
         
         # 标注异常点
         anomaly_mask = labels == 1
         if np.any(anomaly_mask):
             ax1.scatter(times[anomaly_mask], values[anomaly_mask], 
-                       c=cls.COLORS['anomaly'], s=30, zorder=5, 
+                       c=self.COLORS['anomaly'], s=30, zorder=5, 
                        label=f'Anomalies ({np.sum(anomaly_mask)})', alpha=0.8)
         
         ax1.set_xlabel(xlabel, fontsize=12)
-        ax1.set_ylabel(ylabel, fontsize=12, color=cls.COLORS['data'])
-        ax1.tick_params(axis='y', labelcolor=cls.COLORS['data'])
+        ax1.set_ylabel(ylabel, fontsize=12, color=self.COLORS['data'])
+        ax1.tick_params(axis='y', labelcolor=self.COLORS['data'])
         
         # 次坐标轴：异常分数
         ax2 = ax1.twinx()
-        ax2.plot(times, scores, color=cls.COLORS['score'], linewidth=1.0, 
+        ax2.plot(times, scores, color=self.COLORS['score'], linewidth=1.0, 
                  alpha=0.7, linestyle='-', label='Anomaly Score', zorder=2)
         
         # 阈值线
-        ax2.axhline(y=threshold, color=cls.COLORS['threshold'], 
+        ax2.axhline(y=threshold, color=self.COLORS['threshold'], 
                    linestyle='--', linewidth=1.5, alpha=0.8,
                    label=f'Threshold ({threshold:.3f})', zorder=3)
         
-        ax2.set_ylabel('Anomaly Score', fontsize=12, color=cls.COLORS['score'])
-        ax2.tick_params(axis='y', labelcolor=cls.COLORS['score'])
+        ax2.set_ylabel('Anomaly Score', fontsize=12, color=self.COLORS['score'])
+        ax2.tick_params(axis='y', labelcolor=self.COLORS['score'])
         
         # 标题
         plt.title(title, fontsize=14, fontweight='bold', pad=15)
@@ -159,9 +230,8 @@ class DetectVisualizer:
         
         return fig
     
-    @classmethod
     def plot_anomaly_intervals(
-        cls,
+        self,
         times,
         values,
         interval_df,
@@ -201,7 +271,7 @@ class DetectVisualizer:
         Returns:
             matplotlib.figure.Figure
         """
-        cls._setup_style()
+        self._setup_style()
         
         # 数据降采样
         if max_points and len(values) > max_points:
@@ -212,7 +282,7 @@ class DetectVisualizer:
             if labels is not None:
                 labels = np.array(labels)[indices]
         
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+        fig, ax = plt.subplots(figsize=figsize or self.figsize, dpi=dpi or self.dpi)
         
         # 确定Y轴范围
         y_min, y_max = np.min(values), np.max(values)
@@ -249,7 +319,7 @@ class DetectVisualizer:
             anomaly_mask = labels == 1
             if np.any(anomaly_mask):
                 ax.scatter(times[anomaly_mask], values[anomaly_mask], 
-                          c=cls.COLORS['anomaly'], s=20, zorder=5, 
+                          c=self.COLORS['anomaly'], s=20, zorder=5, 
                           label=f'Anomalies ({np.sum(anomaly_mask)})', alpha=0.8)
         
         # 设置坐标轴
@@ -287,9 +357,8 @@ class DetectVisualizer:
         
         return fig
     
-    @classmethod
     def plot_precision_recall_curve(
-        cls,
+        self,
         precision,
         recall,
         save_path=None,
@@ -315,9 +384,9 @@ class DetectVisualizer:
         Returns:
             matplotlib.figure.Figure
         """
-        cls._setup_style()
+        self._setup_style()
         
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+        fig, ax = plt.subplots(figsize=figsize or self.figsize, dpi=dpi or self.dpi)
         
         # 绘制 PR 曲线
         ax.plot(recall, precision, color='#1f77b4', linewidth=2, 
@@ -368,11 +437,10 @@ class DetectVisualizer:
         
         return fig
     
-    @classmethod
     def plot_score_distribution(
-        cls,
+        self,
         scores,
-        threshold,
+        threshold=None,
         labels=None,
         save_path=None,
         title="Anomaly Score Distribution",
@@ -386,7 +454,7 @@ class DetectVisualizer:
         
         Args:
             scores: 异常分数数组
-            threshold: 阈值
+            threshold: 阈值（可选，默认从 scores 推断为 P95）
             labels: 真实标签（可选，用于区分正常/异常分数分布）
             save_path: 保存路径
             title: 图表标题
@@ -398,9 +466,13 @@ class DetectVisualizer:
         Returns:
             matplotlib.figure.Figure
         """
-        cls._setup_style()
+        self._setup_style()
         
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+        # 自动推断 threshold
+        if threshold is None:
+            threshold = np.percentile(scores, 95)
+        
+        fig, ax = plt.subplots(figsize=figsize or self.figsize, dpi=dpi or self.dpi)
         
         if labels is not None:
             # 分开展示正常和异常分数分布
@@ -448,8 +520,7 @@ class DetectVisualizer:
         
         return fig
     
-    @classmethod
-    def create_interval_df(cls, intervals: list) -> pd.DataFrame:
+    def create_interval_df(self, intervals: list) -> pd.DataFrame:
         """
         将区间列表转换为 DataFrame 格式
         
