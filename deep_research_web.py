@@ -269,21 +269,20 @@ class DPPredictor:
             if not success:
                 return None, "⚠️ SHAP 分析失败，请检查模型类型"
 
-            # 生成图表
+            # 生成图表并保存为临时文件（Gradio 6.x 需要路径而非 BytesIO）
+            import tempfile, os, uuid
             figs = {}
             fig_imp = self.shap_analyzer.plot_importance()
             if fig_imp:
-                buf = io.BytesIO()
-                fig_imp.savefig(buf, format='png', dpi=120, bbox_inches='tight')
-                buf.seek(0)
-                figs['importance'] = buf
+                imp_path = os.path.join(tempfile.gettempdir(), f"shap_importance_{uuid.uuid4().hex[:8]}.png")
+                fig_imp.savefig(imp_path, format='png', dpi=120, bbox_inches='tight')
+                figs['importance'] = imp_path
 
             fig_beeswarm = self.shap_analyzer.plot_beeswarm()
             if fig_beeswarm:
-                buf = io.BytesIO()
-                fig_beeswarm.savefig(buf, format='png', dpi=120, bbox_inches='tight')
-                buf.seek(0)
-                figs['beeswarm'] = buf
+                bsw_path = os.path.join(tempfile.gettempdir(), f"shap_beeswarm_{uuid.uuid4().hex[:8]}.png")
+                fig_beeswarm.savefig(bsw_path, format='png', dpi=120, bbox_inches='tight')
+                figs['beeswarm'] = bsw_path
 
             self.shap_figures = figs
             report = self.shap_analyzer.generate_report()
@@ -306,7 +305,8 @@ class DPPredictor:
         return pred
 
     def download_package(self, X_df, y_df, predictions):
-        """生成结果 zip 包"""
+        """生成结果 zip 包并返回临时文件路径（Gradio 6.x 兼容）"""
+        import tempfile, os, uuid
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             # 预测结果 CSV
@@ -322,21 +322,17 @@ class DPPredictor:
             zf.writestr('forecast_data.csv', result_df.to_csv(index=False))
             # 指标 JSON
             zf.writestr('metrics.json', json.dumps(self.metrics, indent=2))
-            # SHAP 图（如果有）
+            # SHAP 图（如果有）— run_shap_analysis 已存为路径
             if self.shap_figures:
-                for fig_name, fig_buf in self.shap_figures.items():
-                    fig_buf.seek(0)
-                    zf.writestr(f'shap_{fig_name}.png', fig_buf.read())
+                for fig_name, fig_path in self.shap_figures.items():
+                    if os.path.isfile(fig_path):
+                        zf.writestr(f'shap_{fig_name}.png', open(fig_path, 'rb').read())
         buf.seek(0)
-        # Gradio 6.x gr.File 需要有 name 属性的文件对象
-        class NamedBytesIO(io.BytesIO):
-            def __init__(self, data, name="deep_predict_results.zip"):
-                super().__init__(data)
-                self._name = name
-            @property
-            def name(self):
-                return self._name
-        return NamedBytesIO(buf.getvalue())
+        # 保存为临时文件，返回路径
+        zip_path = os.path.join(tempfile.gettempdir(), f"deep_predict_results_{uuid.uuid4().hex[:8]}.zip")
+        with open(zip_path, 'wb') as f:
+            f.write(buf.getvalue())
+        return zip_path
 
 
 # ===== DeepPredict Gradio UI Builder =====
