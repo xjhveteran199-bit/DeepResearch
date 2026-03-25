@@ -248,7 +248,9 @@ class SklearnPredictor:
                 return False, f"❌ y 必须是 1D 数组，当前 shape={np.asarray(y).shape}"
             
             self.scaler = StandardScaler()
-            X_scaled = self.scaler.fit_transform(X.fillna(X.median()))
+            X_numeric = X.select_dtypes(include=[np.number])
+            X_filled = X_numeric.fillna(X_numeric.median()) if not X_numeric.empty else X.fillna(X.median())
+            X_scaled = self.scaler.fit_transform(X_filled)
             
             if task_type == 'classification':
                 self.label_encoder = LabelEncoder()
@@ -270,7 +272,12 @@ class SklearnPredictor:
             }
             
             key = (model_name, task_type)
-            model_cls = models.get(key, GradientBoostingRegressor)
+            if key not in models:
+                if model_name == 'LogisticRegression' and task_type == 'regression':
+                    return False, "❌ LogisticRegression 是分类器，不能用于回归任务。请选择 LinearRegression 等回归模型。"
+                model_cls = GradientBoostingRegressor
+            else:
+                model_cls = models[key]
             self.model = model_cls(**(params or {}))
             self.model.fit(X_train, y_train)
             
@@ -301,7 +308,11 @@ class SklearnPredictor:
     def predict(self, X):
         if not self.is_fitted:
             raise ValueError("请先训练模型")
-        X_scaled = self.scaler.transform(X.fillna(X.median()))
+        X_numeric = X.select_dtypes(include=[np.number])
+        if X_numeric.empty:
+            raise ValueError("预测数据中没有数值列，无法进行预测。")
+        X_filled = X_numeric.fillna(X_numeric.median())
+        X_scaled = self.scaler.transform(X_filled)
         pred = self.model.predict(X_scaled)
         if self.task_type == 'classification' and self.label_encoder:
             pred = self.label_encoder.inverse_transform(pred.astype(int))

@@ -115,7 +115,11 @@ class Predictor:
             # ===== sklearn 模型 =====
             self._is_lstm = False
             self.scaler = StandardScaler()
-            X_scaled = self.scaler.fit_transform(X.fillna(X.median()))
+            X_numeric = X.select_dtypes(include=[np.number])
+            if X_numeric.empty:
+                return False, "❌ 训练数据中没有数值列，无法使用 sklearn 模型。"
+            X_filled = X_numeric.fillna(X_numeric.median())
+            X_scaled = self.scaler.fit_transform(X_filled)
 
             if task_type == 'classification':
                 self.label_encoder = LabelEncoder()
@@ -181,6 +185,12 @@ class Predictor:
         
         key = (model_name, task_type)
         if key not in model_map:
+            # LogisticRegression 是分类器，不能用于回归任务
+            if model_name == 'LogisticRegression' and task_type == 'regression':
+                raise ValueError(
+                    f"LogisticRegression 是分类器，不能用于回归任务。"
+                    f"请选择回归模型，如 LinearRegression、Ridge、ElasticNet。"
+                )
             if task_type == 'classification':
                 return RandomForestClassifier(**filtered_params) if filtered_params else RandomForestClassifier()
             return RandomForestRegressor(**filtered_params) if filtered_params else RandomForestRegressor()
@@ -195,7 +205,11 @@ class Predictor:
             X_array = X.values.astype(np.float32)
             return self.lstm_predictor.predict(X_array)
 
-        X_scaled = self.scaler.transform(X.fillna(X.median()))
+        X_numeric = X.select_dtypes(include=[np.number])
+        if X_numeric.empty:
+            raise ValueError("预测数据中没有数值列，无法进行预测。")
+        X_filled = X_numeric.fillna(X_numeric.median())
+        X_scaled = self.scaler.transform(X_filled)
         pred = self.model.predict(X_scaled)
         if self.task_type == 'classification' and self.label_encoder:
             pred = self.label_encoder.inverse_transform(pred.astype(int))
