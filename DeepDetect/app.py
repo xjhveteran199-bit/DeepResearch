@@ -303,7 +303,7 @@ def plot_interval_visualization(X, scores, labels, threshold):
 
 
 def export_results():
-    """导出带标签的结果"""
+    """导出带标签的结果（使用临时文件，避免 BytesIO 在 Gradio 中的兼容性问题）"""
     dl = state['data_loader']
     X = state['X']
     labels = state['labels']
@@ -319,14 +319,21 @@ def export_results():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"anomaly_results_{timestamp}.csv"
 
-        # 写入 BytesIO 缓冲区供 Gradio 下载
-        buffer = io.BytesIO()
-        result_df.to_csv(buffer, index=False)
-        buffer.seek(0)
+        # 写入临时文件（Gradio 的 gr.File() 接收路径字符串时自动处理下载）
+        import tempfile, os
+        tmpdir = tempfile.gettempdir()
+        filepath = os.path.join(tmpdir, filename)
+        result_df.to_csv(filepath, index=False)
 
-        return buffer, f"已导出 {len(result_df)} 行结果到 {filename}"
+        # 验证文件内容
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        file_size = os.path.getsize(filepath)
+
+        return filepath, f"已导出 {len(result_df)} 行结果到 {filename}（{file_size} bytes）"
     except Exception as e:
-        return None, f"导出失败: {str(e)}"
+        import traceback
+        return None, f"导出失败: {str(e)}\n{traceback.format_exc()}"
 
 
 def create_demo():
