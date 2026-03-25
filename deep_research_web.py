@@ -699,12 +699,18 @@ def _build_deep_classify_ui():
             y_proba = clf.predict_proba(X_te)
 
             mc = ClassificationMetrics()
+            # y_te is numeric (LabelEncoder output), y_pred is string (inverse_transform output)
+            # → convert both to same numeric type for metrics computation
+            y_te_num = np.array(y_te, dtype=int)
+            y_pred_num = le.transform(np.array(y_pred, dtype=str))
             full_metrics = mc.compute(
-                y_true=y_te.astype(int), y_pred=y_pred.astype(int),
+                y_true=y_te_num, y_pred=y_pred_num,
                 y_proba=y_proba, labels=list(range(len(class_names))))
 
-            # 混淆矩阵 HTML
-            cm = confusion_matrix(y_te, y_pred)
+            # 混淆矩阵 HTML（统一为字符串避免类型混合）
+            y_te_str = np.array(y_te, dtype=str)
+            y_pred_str = np.array(y_pred, dtype=str)
+            cm = confusion_matrix(y_te_str, y_pred_str)
             cm_rows = []
             cm_rows.append("<tr><th></th>" + "".join([f"<th>{l}</th>" for l in class_names]) + "</tr>")
             for i, row in enumerate(cm):
