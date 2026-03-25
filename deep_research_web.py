@@ -30,6 +30,12 @@ import io
 import warnings
 warnings.filterwarnings('ignore')
 
+# ===== DeepPredict 路径 =====
+DEEP_PREDICT_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepPredict")
+DEEP_DETECT_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepDetect")
+DEEP_CLASSIFY_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepClassify")
+sys.path.insert(0, str(DEEP_PREDICT_PATH))
+
 # ===== DeepPredict Visualizer =====
 sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
 from visualizer import PredictVisualizer
@@ -37,12 +43,6 @@ from visualizer import PredictVisualizer
 # ===== 配置日志 =====
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger("DeepResearch")
-
-# ===== DeepPredict 路径 =====
-DEEP_PREDICT_PATH = Path(r"C:\Users\XJH\DeepPredict")
-DEEP_DETECT_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepDetect")
-DEEP_CLASSIFY_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepClassify")
-sys.path.insert(0, str(DEEP_PREDICT_PATH))
 
 # ===== 统一配色主题 =====
 CSS = """
@@ -322,7 +322,10 @@ class DPPredictor:
                     fig_buf.seek(0)
                     zf.writestr(f'shap_{name}.png', fig_buf.read())
         buf.seek(0)
-        return buf
+        # Gradio 6.x gr.File 需要有 name 属性的文件对象
+        class NamedBytesIO(io.BytesIO):
+            name = "deep_predict_results.zip"
+        return NamedBytesIO(buf.getvalue())
 
 
 # ===== DeepPredict Gradio UI Builder =====
@@ -1044,6 +1047,13 @@ def _plot_results(predictor, X_df, y_series, y_col):
         preds = predictor.predict(X_df)
         y_true = y_series.values
 
+        # 长度对齐（处理 LSTM/PatchTST 等序列模型输出长度与原始数据不一致的问题）
+        min_len = min(len(y_true), len(preds))
+        if min_len < len(y_true) or min_len < len(preds):
+            logger.warning(f"预测长度不匹配: y_true={len(y_true)}, preds={len(preds)}，截断到 {min_len}")
+            y_true = y_true[:min_len]
+            preds = preds[:min_len]
+
         # 使用新的 PredictVisualizer
         viz = PredictVisualizer(figsize=(12, 5))
 
@@ -1098,13 +1108,18 @@ def _plot_results(predictor, X_df, y_series, y_col):
             import traceback
             traceback.print_exc()
             preds = predictor.predict(X_df)
-            n = len(y_series)
+            y_t = y_series.values
+            p_t = preds
+            min_len = min(len(y_t), len(p_t))
+            y_t = y_t[:min_len]
+            p_t = p_t[:min_len]
+            n = len(y_t)
             fig, axes = plt.subplots(1, 2, figsize=(14, 4))
-            axes[0].plot(range(n), y_series.values, label='Actual', alpha=0.7)
-            axes[0].plot(range(n), preds, label='Predicted', alpha=0.7)
+            axes[0].plot(range(n), y_t, label='Actual', alpha=0.7)
+            axes[0].plot(range(n), p_t, label='Predicted', alpha=0.7)
             axes[0].legend()
             axes[0].set_title(f'{y_col} Prediction')
-            axes[1].hist(y_series.values - preds, bins=30, alpha=0.7)
+            axes[1].hist(y_t - p_t, bins=30, alpha=0.7)
             axes[1].set_title('Residuals')
             plt.tight_layout()
             return fig
