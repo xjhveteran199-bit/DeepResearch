@@ -122,8 +122,23 @@ class DPDataLoader:
         if self.df is None:
             return ""
         info = f"**数据形状**：{self.df.shape[0]} 行 × {self.df.shape[1]} 列\n\n"
-        info += f"**数值列**（{len(self.numeric_cols)}）：`{'`, `'.join(self.numeric_cols[:8])}{'...' if len(self.numeric_cols)>8 else ''}`\n\n"
-        info += f"**类别列**（{len(self.categorical_cols)}）：`{'`, `'.join(self.categorical_cols[:5])}{'...' if len(self.categorical_cols)>5 else ''}`"
+        # 数值列：显示列名和范围
+        if self.numeric_cols:
+            num_details = []
+            for col in self.numeric_cols[:8]:
+                col_data = self.df[col].dropna()
+                if len(col_data) > 0:
+                    vmin = f"{col_data.min():.4g}"
+                    vmax = f"{col_data.max():.4g}"
+                    if vmin != vmax:
+                        num_details.append(f"`{col}` [{vmin} ~ {vmax}]")
+                    else:
+                        num_details.append(f"`{col}` ={vmin}")
+            info += f"**数值列**（{len(self.numeric_cols)}）：" + "，".join(num_details)
+            if len(self.numeric_cols) > 8:
+                info += f"...（共{len(self.numeric_cols)}列）"
+            info += "\n\n"
+        info += f"**类别列**（{len(self.categorical_cols)}）：`{'`，`'.join(self.categorical_cols[:5])}{'...' if len(self.categorical_cols)>5 else ''}`"
         return info
 
 
@@ -519,7 +534,9 @@ def build_deep_predict_ui():
             # 自动运行 SHAP 分析（如尚未运行），确保 ZIP 包含 SHAP 图表
             if not _dp_predictor.shap_figures and not _dp_predictor._is_lstm and not _dp_predictor._is_patchtst:
                 figs, _ = _dp_predictor.run_shap_analysis(X_df)
-            return _dp_predictor.download_package(X_df, y_series, preds)
+            zip_path = _dp_predictor.download_package(X_df, y_series, preds)
+            # 返回文件路径（Gradio File 组件直接支持路径字符串）
+            return zip_path
 
         download_btn.click(on_download, inputs=[], outputs=[download_file])
 
@@ -614,6 +631,8 @@ def _build_deep_classify_ui():
         dc_cm_out = gr.HTML(label="📋 混淆矩阵")
         dc_roc_out = gr.Plot(label="📈 ROC 曲线")
         dc_model_file = gr.File(label="💾 下载模型")
+        dc_download_zip_btn = gr.Button("📦 下载完整结果包（CSV + 图表 + 模型 + 指标）", variant="secondary")
+        dc_download_zip_file = gr.File(label="下载 ZIP")
 
     with gr.Row():
         dc_pred_file = gr.File(label="📄 上传待预测CSV", file_types=[".csv"])
@@ -784,8 +803,31 @@ def _build_deep_classify_ui():
             save_path = str(DEEP_CLASSIFY_PATH / "deepclassify_model.pkl")
             clf.save(save_path)
 
+            # 保存图表和数据到临时文件，供 ZIP 下载使用
+            import tempfile as _tmp, uuid as _uuid
+            _cm_path = _os.path.join(_tmp.gettempdir(), f"dc_cm_{_uuid.uuid4().hex[:8]}.html")
+            with open(_cm_path, 'w', encoding='utf-8') as _f:
+                _f.write(cm_html)
+            _roc_path = _os.path.join(_tmp.gettempdir(), f"dc_roc_{_uuid.uuid4().hex[:8]}.png")
+            fig_roc.savefig(_roc_path, format='png', dpi=300, bbox_inches='tight')
+            plt.close(fig_roc)
+            # 保存预测数据 CSV
+            _pred_df = pd.DataFrame({'actual': y_te, 'predicted': y_pred})
+            _pred_csv_path = _os.path.join(_tmp.gettempdir(), f"dc_predictions_{_uuid.uuid4().hex[:8]}.csv")
+            _pred_df.to_csv(_pred_csv_path, index=False)
+            # 保存 metrics JSON
+            _metrics_json_path = _os.path.join(_tmp.gettempdir(), f"dc_metrics_{_uuid.uuid4().hex[:8]}.json")
+            with open(_metrics_json_path, 'w', encoding='utf-8') as _f:
+                import json as _json
+                _f.write(_json.dumps(full_metrics, indent=2))
+
             new_state = dict(state)
-            new_state.update({'classifier': clf, 'metrics': full_metrics})
+            new_state.update({
+                'classifier': clf, 'metrics': full_metrics,
+                'cm_path': _cm_path, 'roc_path': _roc_path,
+                'pred_csv_path': _pred_csv_path, 'metrics_json_path': _metrics_json_path,
+                'model_path': save_path
+            })
             return msg, metrics_html, cm_html, fig_roc, save_path, new_state
         except Exception as e:
             import traceback
@@ -799,6 +841,35 @@ def _build_deep_classify_ui():
                                 dc_svm_c, dc_svm_kernel,
                                 dc_state],
                         outputs=[dc_train_msg, dc_metrics_out, dc_cm_out, dc_roc_out, dc_model_file, dc_state])
+
+    def dc_on_download_zip(state):
+        if state.get('classifier') is None:
+            return None
+        import tempfile as _tmp, uuid as _uuid, pathlib as _pathlib
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # 预测数据 CSV
+            if state.get('pred_csv_path') and _os.path.exists(state['pred_csv_path']):
+                zf.writestr('predictions.csv', open(state['pred_csv_path'], 'rb').read())
+            # 混淆矩阵 HTML
+            if state.get('cm_path') and _os.path.exists(state['cm_path']):
+                zf.writestr('confusion_matrix.html', open(state['cm_path'], 'rb').read())
+            # ROC 曲线 PNG
+            if state.get('roc_path') and _os.path.exists(state['roc_path']):
+                zf.writestr('roc_curve.png', open(state['roc_path'], 'rb').read())
+            # 指标 JSON
+            if state.get('metrics_json_path') and _os.path.exists(state['metrics_json_path']):
+                zf.writestr('metrics.json', open(state['metrics_json_path'], 'rb').read())
+            # 模型文件
+            if state.get('model_path') and _os.path.exists(state['model_path']):
+                zf.writestr('model.pkl', open(state['model_path'], 'rb').read())
+        buf.seek(0)
+        zip_path = _os.path.join(_tmp.gettempdir(), f"deep_classify_results_{_uuid.uuid4().hex[:8]}.zip")
+        with open(zip_path, 'wb') as f:
+            f.write(buf.getvalue())
+        return zip_path
+
+    dc_download_zip_btn.click(dc_on_download_zip, inputs=[dc_state], outputs=[dc_download_zip_file])
 
     def dc_on_pred(file_obj, state):
         if file_obj is None:
@@ -924,6 +995,8 @@ def _build_deep_detect_ui():
         dd_export_file = gr.File(label="下载结果")
         dd_download_plot_btn = gr.Button("📥 下载图表 PNG", variant="secondary")
         dd_download_plot_file = gr.File(label="下载图表")
+        dd_download_zip_btn = gr.Button("📦 下载完整结果包（CSV + 图表 + 指标）", variant="secondary")
+        dd_download_zip_file = gr.File(label="下载 ZIP")
         dd_status = gr.Markdown("")
 
     # ===== 事件绑定 =====
@@ -1040,8 +1113,13 @@ def _build_deep_detect_ui():
             # 保存图表为 PNG 供下载
             import tempfile as _tempfile, os as _os
             _plot_path = _os.path.join(_tempfile.gettempdir(), f"dd_plot_{int(time.time())}.png")
-            fig.savefig(_plot_path, format='png', dpi=150, bbox_inches='tight')
+            fig.savefig(_plot_path, format='png', dpi=300, bbox_inches='tight')
             new_state['plot_path'] = _plot_path
+            # 保存 metrics text 供 ZIP 下载
+            _metrics_path = _os.path.join(_tempfile.gettempdir(), f"dd_metrics_{int(time.time())}.txt")
+            with open(_metrics_path, 'w', encoding='utf-8') as _f:
+                _f.write(metrics_text)
+            new_state['metrics_path'] = _metrics_path
             return eval_results, fig, new_state, metrics_text
         except Exception as e:
             import traceback
@@ -1088,6 +1166,35 @@ def _build_deep_detect_ui():
 
     dd_download_plot_btn.click(dd_on_download_plot, inputs=[dd_state],
                               outputs=[dd_download_plot_file, dd_status])
+
+    def dd_on_download_zip(state):
+        loader = state.get('loader')
+        X = state.get('X')
+        labels = state.get('labels')
+        scores = state.get('scores')
+        if loader is None or X is None or labels is None:
+            return None
+        import tempfile as _tmp, uuid as _uuid, pathlib as _pathlib
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # 导出 CSV
+            result_df = loader.export_with_labels(X, labels, scores)
+            csv_buf = io.StringIO()
+            result_df.to_csv(csv_buf, index=False, encoding='utf-8')
+            zf.writestr('anomaly_results.csv', csv_buf.getvalue())
+            # 图表 PNG
+            if state.get('plot_path') and _os.path.exists(state['plot_path']):
+                zf.writestr('anomaly_detection_plot.png', open(state['plot_path'], 'rb').read())
+            # 指标 text
+            if state.get('metrics_path') and _os.path.exists(state['metrics_path']):
+                zf.writestr('metrics.txt', open(state['metrics_path'], 'rb').read())
+        buf.seek(0)
+        zip_path = _os.path.join(_tmp.gettempdir(), f"deep_detect_results_{_uuid.uuid4().hex[:8]}.zip")
+        with open(zip_path, 'wb') as f:
+            f.write(buf.getvalue())
+        return zip_path
+
+    dd_download_zip_btn.click(dd_on_download_zip, inputs=[dd_state], outputs=[dd_download_zip_file])
 
     return dd_state
 
