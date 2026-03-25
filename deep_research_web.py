@@ -539,13 +539,9 @@ def _build_deep_classify_ui():
     from sklearn.metrics import confusion_matrix, roc_curve, auc
     import matplotlib.pyplot as plt
 
-    # torch 可能因 numpy 版本问题导入失败，单独处理
-    try:
-        from models import CNN1DClassifyWrapper, RFClassifier, GBClassifier, SVMClassifier
-        HAS_TORCH = True
-    except Exception as _e:
-        HAS_TORCH = False
-        _torch_err = str(_e)
+    # 延迟导入分类器，避免 torch 导入失败时影响其他分类器
+    HAS_TORCH = True
+    _torch_err = ""
 
     # ===== 状态 =====
     dc_state = gr.State({
@@ -696,23 +692,30 @@ def _build_deep_classify_ui():
             le = state['le']
             class_names = state['class_names']
 
-            # 构建分类器
+            # 构建分类器（直接导入，避免 sys.path 中 DeepPredict 遮蔽 DeepClassify 的 models）
+            import sys as _sys
+            _sys.path.insert(0, str(DEEP_CLASSIFY_PATH / "src"))
             if model_name == 'CNN1D':
-                if not HAS_TORCH:
-                    return f"❌ CNN1D 需要 PyTorch（当前环境: {_torch_err[:80]}...）\n请先解决 numpy/torch 兼容性问题", "", "", None, None, state
+                try:
+                    from models import CNN1DClassifyWrapper
+                except ImportError as _e:
+                    return f"❌ CNN1D 导入失败: {_e}", "", "", None, None, state
                 clf = CNN1DClassifyWrapper(
                     hidden_channels=int(cnn_hidden), kernel_size=int(cnn_kernel),
                     epochs=int(cnn_epochs), learning_rate=float(cnn_lr),
                     batch_size=int(cnn_bs))
             elif model_name == 'RandomForest':
+                from models import RFClassifier
                 clf = RFClassifier(
                     n_estimators=int(rf_trees),
                     max_depth=int(rf_depth) if int(rf_depth) > 0 else None)
             elif model_name == 'GradientBoosting':
+                from models import GBClassifier
                 clf = GBClassifier(
                     n_estimators=int(gb_trees), max_depth=int(gb_depth),
                     learning_rate=float(gb_lr))
             else:
+                from models import SVMClassifier
                 clf = SVMClassifier(C=float(svm_c), kernel=str(svm_kernel))
 
             ok, msg = clf.fit(X, y_enc)
