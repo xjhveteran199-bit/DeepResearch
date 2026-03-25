@@ -31,11 +31,13 @@ import io
 import warnings
 warnings.filterwarnings('ignore')
 
-# ===== DeepPredict 路径 =====
-DEEP_PREDICT_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepPredict")
-DEEP_DETECT_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepDetect")
-DEEP_CLASSIFY_PATH = Path(r"C:\Users\XJH\DeepResearch\DeepClassify")
-sys.path.insert(0, str(DEEP_PREDICT_PATH))
+# ===== 项目路径配置（统一父目录确保各模块均可正确导入）=====
+DEEP_ROOT = Path(r"C:\Users\XJH\DeepResearch")
+DEEP_PREDICT_PATH = DEEP_ROOT / "DeepPredict"
+DEEP_DETECT_PATH = DEEP_ROOT / "DeepDetect"
+DEEP_CLASSIFY_PATH = DEEP_ROOT / "DeepClassify"
+# 父目录在首项，确保 DeepPredict / DeepClassify / DeepDetect 均作为顶级包可导入
+sys.path.insert(0, str(DEEP_ROOT))
 
 # ===== DeepPredict Visualizer =====
 sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
@@ -692,12 +694,10 @@ def _build_deep_classify_ui():
             le = state['le']
             class_names = state['class_names']
 
-            # 构建分类器（直接导入，避免 sys.path 中 DeepPredict 遮蔽 DeepClassify 的 models）
-            import sys as _sys
-            _sys.path.insert(0, str(DEEP_CLASSIFY_PATH / "src"))
+            # 构建分类器（直接导入各分类器模块，避免 sys.path 模块遮蔽问题）
             if model_name == 'CNN1D':
                 try:
-                    from models import CNN1DClassifyWrapper
+                    from DeepClassify.src.models.cnn1d_classifier import CNN1DClassifyWrapper
                 except ImportError as _e:
                     return f"❌ CNN1D 导入失败: {_e}", "", "", None, None, state
                 clf = CNN1DClassifyWrapper(
@@ -705,17 +705,17 @@ def _build_deep_classify_ui():
                     epochs=int(cnn_epochs), learning_rate=float(cnn_lr),
                     batch_size=int(cnn_bs))
             elif model_name == 'RandomForest':
-                from models import RFClassifier
+                from DeepClassify.src.models.rf_classifier import RFClassifier
                 clf = RFClassifier(
                     n_estimators=int(rf_trees),
                     max_depth=int(rf_depth) if int(rf_depth) > 0 else None)
             elif model_name == 'GradientBoosting':
-                from models import GBClassifier
+                from DeepClassify.src.models.gb_classifier import GBClassifier
                 clf = GBClassifier(
                     n_estimators=int(gb_trees), max_depth=int(gb_depth),
                     learning_rate=float(gb_lr))
             else:
-                from models import SVMClassifier
+                from DeepClassify.src.models.svm_classifier import SVMClassifier
                 clf = SVMClassifier(C=float(svm_c), kernel=str(svm_kernel))
 
             ok, msg = clf.fit(X, y_enc)
