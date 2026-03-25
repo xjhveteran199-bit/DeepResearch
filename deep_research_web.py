@@ -142,7 +142,11 @@ class DPPredictor:
         try:
             self.target_col = target_col
             self.feature_names = list(X_df.columns)
-            X = X_df.fillna(X_df.median())
+            # P2修复：只对数值列做 fillna，避免 Date/字符串列导致 TypeError
+            numeric_mask = X_df.select_dtypes(include=[np.number]).columns
+            X = X_df[numeric_mask].fillna(X_df[numeric_mask].median())
+            if X.shape[1] == 0:
+                return False, "❌ 选中特征中没有任何数值列，无法进行回归/分类"
 
             # 判断任务类型
             if model_name in ['LSTM', 'PatchTST']:
@@ -218,6 +222,10 @@ class DPPredictor:
                 X_scaled, y_enc, test_size=test_size, random_state=42
             )
 
+            # P0修复：LogisticRegression 是分类器，不能用于回归，明确报错而非静默替换
+            if model_name == 'LogisticRegression' and self.task_type == 'regression':
+                return False, "❌ LogisticRegression 是分类器，不能用于回归任务。请选择 LinearRegression、Ridge 或 ElasticNet。", {}
+
             model_map = {
                 ('RandomForest', 'regression'): RandomForestRegressor,
                 ('RandomForest', 'classification'): RandomForestClassifier,
@@ -227,7 +235,7 @@ class DPPredictor:
                 ('LogisticRegression', 'classification'): LogisticRegression,
             }
             key = (model_name, self.task_type)
-            model_cls = model_map.get(key, RandomForestRegressor)
+            model_cls = model_map.get(key)
             self.model = model_cls(**(params or {}))
             self.model.fit(X_train, y_train)
             y_pred = self.model.predict(X_test)
@@ -295,7 +303,11 @@ class DPPredictor:
     def predict(self, X_df):
         if not self.is_fitted:
             raise ValueError("模型未训练")
-        X = X_df.fillna(X_df.median())
+        if self.model is None and not self._is_lstm and not self._is_patchtst:
+            raise ValueError("模型未正确训练，无法预测")
+        # P2修复：只对数值列做 fillna
+        numeric_mask = X_df.select_dtypes(include=[np.number]).columns
+        X = X_df[numeric_mask].fillna(X_df[numeric_mask].median())
         if self._is_lstm or self._is_patchtst:
             return self._lstm_model.predict(X.values.astype(np.float32))
         X_scaled = self.scaler.transform(X)
@@ -479,6 +491,9 @@ def build_deep_predict_ui():
         def on_download():
             global _dp_loader, _dp_predictor, _dp_x_cols, _dp_y_col
             if _dp_predictor is None or not _dp_predictor.is_fitted:
+                return None
+            # 防御：确保 model 已正确初始化
+            if not hasattr(_dp_predictor, 'model') or _dp_predictor.model is None:
                 return None
             X_df = _dp_loader.df[_dp_x_cols]
             y_series = _dp_loader.df[_dp_y_col]
