@@ -830,12 +830,14 @@ def _build_deep_detect_ui():
     from DeepDetect.src.models.ocsvm import OCSVMDetector
     from DeepDetect.src.models.lof_detector import LOFDetector
     from DeepDetect.src.models.stats_detector import StatsDetector
+    from DeepDetect.src.models.lstm_detector import LSTMDetector
 
     DETECTOR_MAP = {
         'IsolationForest': IsolationForestDetector,
         'Autoencoder': AutoencoderDetector,
         'OneClassSVM': OCSVMDetector,
         'LOF': LOFDetector,
+        'LSTM': LSTMDetector,
         'Stats_ZScore': lambda **kw: StatsDetector(method='zscore', **kw),
         'Stats_IQR': lambda **kw: StatsDetector(method='iqr', **kw),
     }
@@ -845,7 +847,7 @@ def _build_deep_detect_ui():
                           'labels': None, 'scores': None, 'threshold': None})
 
     gr.Markdown("## 🔍 DeepDetect — 异常检测")
-    gr.Markdown("上传时序 CSV，选择检测方法，自动识别异常点。支持 **6种检测器** 和有/无监督双模式。")
+    gr.Markdown("上传时序 CSV，选择检测方法，自动识别异常点。支持 **7种检测器** 和有/无监督双模式。")
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -909,7 +911,7 @@ def _build_deep_detect_ui():
                       outputs=[dd_target, dd_info, dd_preview, dd_state])
 
     def dd_show_params(method, contamination):
-        vis_ep = method == 'Autoencoder'
+        vis_ep = method in ('Autoencoder', 'LSTM')
         vis_est = method == 'IsolationForest'
         return gr.update(visible=vis_ep), gr.update(visible=vis_est)
 
@@ -929,6 +931,8 @@ def _build_deep_detect_ui():
 
             params = {'contamination': contamination}
             if method == 'Autoencoder':
+                params['epochs'] = int(epochs)
+            elif method == 'LSTM':
                 params['epochs'] = int(epochs)
             elif method == 'IsolationForest':
                 params['n_estimators'] = int(n_est)
