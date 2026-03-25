@@ -84,14 +84,14 @@ def on_upload_csv(file_obj):
     """上传并加载 CSV"""
     path = extract_file_path(file_obj)
     if not path:
-        return gr.update(), "❌ 未找到文件"
+        return gr.update(), "❌ 未找到文件", "", gr.update()
 
     from src.core.data_loader import DataLoader
     loader = DataLoader()
     ok, msg = loader.load_csv(path)
 
     if not ok:
-        return gr.update(), msg
+        return gr.update(), msg, "", gr.update()
 
     state.data_loader = loader
     summary = loader.get_summary()
@@ -113,7 +113,7 @@ def on_upload_csv(file_obj):
         choices=list(loader.df.columns),
         value=None
     )
-    return cols_dropdown, "\n".join(info_lines), preview_html
+    return cols_dropdown, "\n".join(info_lines), preview_html, gr.update(choices=list(loader.df.columns), value=None)
 
 
 # ============ Tab 2: 特征/标签选择 ============
@@ -761,9 +761,12 @@ def on_predict_execute():
 
 # ============ 构建 Gradio 界面 ============
 def build_ui():
-    with gr.Blocks(title="DeepClassify - 信号分类", theme=gr.themes.Soft()) as app:
+    with gr.Blocks(title="DeepClassify - 信号分类") as app:
         gr.Markdown("# 🔬 DeepClassify - AI 信号分类模块")
         gr.Markdown("上传 CSV（特征 + 标签），选择分类模型，训练并预测。")
+
+        # 预定义目标列组件（用于 Tab1 加载后更新 Tab2 的下拉框）
+        target_col = gr.Dropdown(label="目标列（标签）", choices=[])
 
         with gr.Tabs():
             # ===== Tab 1: 数据加载 =====
@@ -780,24 +783,28 @@ def build_ui():
                         data_info = gr.Textbox(label="数据信息", lines=8, interactive=False)
                 preview_html = gr.HTML(label="数据预览")
 
+                file_upload.upload(
+                    fn=on_upload_csv,
+                    inputs=[file_upload],
+                    outputs=[gr.Dropdown(label="选择目标列（标签列）"), data_info, preview_html, target_col]
+                )
                 load_btn.click(
                     fn=on_upload_csv,
                     inputs=[file_upload],
-                    outputs=[gr.Dropdown(label="选择目标列（标签列）"), data_info, preview_html]
+                    outputs=[gr.Dropdown(label="选择目标列（标签列）"), data_info, preview_html, target_col]
                 )
 
             # ===== Tab 2: 特征/标签选择 =====
             with gr.TabItem("⚙️ 特征与标签"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        target_col = gr.Dropdown(label="目标列（标签）", choices=[], allow_empty_value=False)
+                        # target_col 已在外部定义，此处复用
                         test_size = gr.Slider(0.05, 0.4, value=0.2, step=0.05, label="测试集比例")
                         select_btn = gr.Button("确认选择", variant="primary")
                     with gr.Column(scale=2):
                         feature_col = gr.Dropdown(
                             label="特征列（默认使用全部数值列）",
                             choices=[],
-                            allow_empty_value=True,
                             multiselect=True
                         )
                         select_info = gr.Textbox(label="选择信息", lines=10, interactive=False)

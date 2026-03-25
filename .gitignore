@@ -18,3 +18,13 @@ temp/
 tmp/
 .DS_Store
 gradio_cached_examples/
+memory/
+test_*.py
+debug_*.py
+temp_*.py
+verify_*.py
+check_*.py
+fix_*.py
+upload_test.py
+test_output/
+*.tmp

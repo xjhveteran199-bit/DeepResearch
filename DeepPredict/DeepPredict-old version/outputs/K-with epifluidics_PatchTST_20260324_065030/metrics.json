@@ -1,0 +1,26 @@
+{
+  "model": "PatchTST",
+  "target": "K-with epifluidics",
+  "n_future": 600,
+  "metrics": {
+    "RMSE": 0.01872652566235372,
+    "MAE": 0.01265617273747921,
+    "R2": 0.9987385272979736,
+    "model": "PatchTST",
+    "d_model": 128,
+    "n_heads": 4,
+    "n_layers": 3,
+    "seq_len": 96,
+    "pred_len": 96,
+    "patch_size": 16,
+    "epochs": 30,
+    "final_train_loss": 5.738589080855101e-05
+  },
+  "pred_range": [
+    10.1887845993042,
+    14.480608940124512
+  ],
+  "pred_mean": 12.208038330078125,
+  "trend": "上升",
+  "change_pct": 42.12
+}

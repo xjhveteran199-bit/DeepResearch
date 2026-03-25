@@ -1,0 +1,26 @@
+{
+  "model": "PatchTST",
+  "target": "Glu-without epifluidics",
+  "n_future": 600,
+  "metrics": {
+    "RMSE": 0.19984292441011905,
+    "MAE": 0.15427345037460327,
+    "R2": 0.5508545637130737,
+    "model": "PatchTST",
+    "d_model": 128,
+    "n_heads": 4,
+    "n_layers": 3,
+    "seq_len": 96,
+    "pred_len": 96,
+    "patch_size": 16,
+    "epochs": 30,
+    "final_train_loss": 0.0012076811113469635
+  },
+  "pred_range": [
+    83.35008239746094,
+    85.15625762939453
+  ],
+  "pred_mean": 83.91413116455078,
+  "trend": "下降",
+  "change_pct": -2.1
+}

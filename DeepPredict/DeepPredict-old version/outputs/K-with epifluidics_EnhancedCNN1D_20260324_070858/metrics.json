@@ -1,0 +1,30 @@
+{
+  "model": "EnhancedCNN1D",
+  "target": "K-with epifluidics",
+  "n_future": 600,
+  "metrics": {
+    "RMSE": 1.0182280999817916,
+    "MAE": 0.9151617884635925,
+    "R2": -2.501636266708374,
+    "model": "EnhancedCNN1D",
+    "hidden_channels": 64,
+    "num_scales": 3,
+    "kernel_sizes": [
+      3,
+      5,
+      7
+    ],
+    "num_res_blocks": 2,
+    "seq_len": 96,
+    "pred_len": 48,
+    "n_features": 1,
+    "n_params": 529232
+  },
+  "pred_range": [
+    8.150850296020508,
+    8.49026870727539
+  ],
+  "pred_mean": 8.198538179397582,
+  "trend": "下降",
+  "change_pct": -3.91
+}

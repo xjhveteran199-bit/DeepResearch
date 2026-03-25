@@ -1,0 +1,20 @@
+{
+  "model": "PatchTST",
+  "target": "K-with epifluidics",
+  "time_col": "Time/min",
+  "seq_len": 48,
+  "pred_len": 24,
+  "epochs_trained": 50,
+  "final_train_loss": 3.3072205277198534e-06,
+  "R2": 0.9999508261680603,
+  "RMSE": 0.003948125746155985,
+  "MAE": 0.002186134923249483,
+  "n_future_steps": 50,
+  "pred_range": [
+    10.190441131591797,
+    10.495862007141113
+  ],
+  "pred_mean": 10.339258193969727,
+  "fig_path": "C:\\Users\\XJH\\DeepPredict\\outputs\\patchtst_k_epifluidics\\patchtst_forecast.png",
+  "model_path": "C:\\Users\\XJH\\DeepPredict\\outputs\\patchtst_k_epifluidics\\patchtst_k_epifluidics.pt"
+}
