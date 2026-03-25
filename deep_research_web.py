@@ -311,20 +311,31 @@ class DPPredictor:
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             # 预测结果 CSV
             result_df = X_df.copy()
-            result_df[self.target_col] = y_df.values
-            result_df['prediction'] = predictions
+            # 长度对齐（处理 LSTM/PatchTST 输出长度与原始数据不一致的问题）
+            min_len = min(len(result_df), len(y_df.values), len(predictions))
+            if min_len < len(result_df):
+                result_df = result_df.iloc[:min_len].reset_index(drop=True)
+            y_vals = np.asarray(y_df.values)[:min_len]
+            pred_vals = np.asarray(predictions)[:min_len]
+            result_df[self.target_col] = y_vals
+            result_df['prediction'] = pred_vals
             zf.writestr('forecast_data.csv', result_df.to_csv(index=False))
             # 指标 JSON
             zf.writestr('metrics.json', json.dumps(self.metrics, indent=2))
             # SHAP 图（如果有）
             if self.shap_figures:
-                for name, fig_buf in self.shap_figures.items():
+                for fig_name, fig_buf in self.shap_figures.items():
                     fig_buf.seek(0)
-                    zf.writestr(f'shap_{name}.png', fig_buf.read())
+                    zf.writestr(f'shap_{fig_name}.png', fig_buf.read())
         buf.seek(0)
         # Gradio 6.x gr.File 需要有 name 属性的文件对象
         class NamedBytesIO(io.BytesIO):
-            name = "deep_predict_results.zip"
+            def __init__(self, data, name="deep_predict_results.zip"):
+                super().__init__(data)
+                self._name = name
+            @property
+            def name(self):
+                return self._name
         return NamedBytesIO(buf.getvalue())
 
 
