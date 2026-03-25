@@ -23,13 +23,80 @@ from typing import Optional, Tuple, List, Dict, Any
 
 warnings.filterwarnings('ignore')
 
-# ─────────────────────────────────────────────────────────────────
-# 样式配置
-# ─────────────────────────────────────────────────────────────────
+# ============================================================
+# Nature 期刊配色方案（无需 LaTeX，纯 matplotlib 实现）
+# ============================================================
 
-# scienceplots 需要 LaTeX，在 Windows 上可能不可用，默认禁用
-# 如需启用请手动设置: HAS_SCIENCEPLOTS = True 并确保安装了 LaTeX
-HAS_SCIENCEPLOTS = False
+# Nature 官方配色（7色）
+NATURE_COLORS = [
+    '#E64B35',  # 红色
+    '#4DBBD5',  # 青色
+    '#00A087',  # 绿色
+    '#3C5488',  # 深蓝
+    '#F39B7F',  # 橙色
+    '#8491B4',  # 灰蓝
+    '#91D1C2',  # 浅绿
+]
+
+# 设置全局配色
+matplotlib.rcParams['axes.prop_cycle'] = matplotlib.cycler(color=NATURE_COLORS)
+
+# Nature 风格（无 LaTeX）
+matplotlib.rcParams.update({
+    'font.size': 10,
+    'axes.titlesize': 12,
+    'axes.labelsize': 10,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 9,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+    'grid.linestyle': '--',
+    'axes.linewidth': 0.8,
+    'xtick.major.width': 0.8,
+    'ytick.major.width': 0.8,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans', 'Helvetica'],
+    'text.usetex': False,  # 强制禁用 LaTeX
+})
+
+# 启用 scienceplots（如果有的话）
+try:
+    import scienceplots
+    HAS_SCIENCEPLOTS = True
+except ImportError:
+    HAS_SCIENCEPLOTS = False
+
+def apply_nature_style():
+    """应用 Nature 期刊风格"""
+    if HAS_SCIENCEPLOTS:
+        try:
+            plt.style.use(['science', 'nature'])
+            plt.rcParams.update({
+                'text.usetex': False,
+                'font.family': 'sans-serif',
+            })
+        except Exception:
+            # scienceplots 不可用时用自定义配置
+            pass
+    plt.rcParams.update({
+        'font.size': 10,
+        'axes.titlesize': 12,
+        'axes.labelsize': 10,
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'axes.grid': True,
+        'grid.alpha': 0.3,
+        'grid.linestyle': '--',
+    })
+
+# ─────────────────────────────────────────────────────────────────
+# 样式配置（向后兼容别名）
+# ─────────────────────────────────────────────────────────────────
 
 # 期刊配色（色盲友好）
 _COLORS = {
@@ -44,34 +111,8 @@ _COLORS = {
 _FONT_SIZE = 9
 _DPI = 300
 
-
-def _apply_science_style():
-    """应用 scienceplots 子刊风格"""
-    # 禁用 LaTeX（避免 latex 未安装报错）
-    matplotlib.rcParams['text.usetex'] = False
-
-    if HAS_SCIENCEPLOTS:
-        try:
-            plt.style.use(['science', 'nature'])
-        except Exception:
-            plt.style.use(['ggplot'])
-    else:
-        # Fallback: 自定义简洁风格
-        plt.style.use(['ggplot'])
-
-    matplotlib.rcParams['font.size'] = _FONT_SIZE
-    matplotlib.rcParams['axes.labelsize'] = _FONT_SIZE
-    matplotlib.rcParams['axes.titlesize'] = _FONT_SIZE + 1
-    matplotlib.rcParams['xtick.labelsize'] = _FONT_SIZE - 1
-    matplotlib.rcParams['ytick.labelsize'] = _FONT_SIZE - 1
-    matplotlib.rcParams['legend.fontsize'] = _FONT_SIZE - 1
-    matplotlib.rcParams['figure.dpi'] = 150
-    matplotlib.rcParams['savefig.dpi'] = _DPI
-    matplotlib.rcParams['axes.spines.top'] = False
-    matplotlib.rcParams['axes.spines.right'] = False
-    matplotlib.rcParams['axes.grid'] = True
-    matplotlib.rcParams['grid.alpha'] = 0.3
-    matplotlib.rcParams['grid.linewidth'] = 0.5
+# 向后兼容别名
+_apply_science_style = apply_nature_style
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -90,13 +131,31 @@ class PredictVisualizer:
     - plot_all(): 一键生成全套图表
     """
 
-    def __init__(self, figsize: tuple = (10, 5)):
+    def __init__(self, figsize: tuple = (10, 5), dpi: int = 150):
         """
         Args:
             figsize: 默认图形尺寸 (width, height)
+            dpi: 默认分辨率
         """
         self.figsize = figsize
+        self.dpi = dpi
         self._saved_figures: Dict[str, plt.Figure] = {}
+        apply_nature_style()
+
+    def plot_prediction(
+        self,
+        y_true: np.ndarray,
+        y_pred: np.ndarray,
+        title: str = "Prediction vs Actual",
+        save_path: Optional[str] = None,
+        figsize: Optional[tuple] = None,
+        dpi: Optional[int] = None,
+    ) -> plt.Figure:
+        """快捷预测图（plot_prediction_timeseries 的别名）"""
+        return self.plot_prediction_timeseries(
+            y_true, y_pred, title=title, save_path=save_path,
+            figsize=figsize, dpi=dpi or self.dpi
+        )
 
     def plot_prediction_timeseries(
         self,
