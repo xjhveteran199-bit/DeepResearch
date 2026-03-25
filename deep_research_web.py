@@ -9,6 +9,7 @@ Deep-Research 统一平台 Web 界面 v2.0
 """
 
 import os
+import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["GRADIO_SERVER_NAME"] = "0.0.0.0"
 os.environ["GRADIO_SERVER_PORT"] = "7860"
@@ -39,6 +40,17 @@ sys.path.insert(0, str(DEEP_PREDICT_PATH))
 # ===== DeepPredict Visualizer =====
 sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
 from visualizer import PredictVisualizer
+
+# ===== DeepPredict 高级模型（提前导入，避免子进程路径丢失）=====
+sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
+try:
+    from models.lstm_model import LSTMPredictor
+except ImportError:
+    LSTMPredictor = None
+try:
+    from models.patchtst_model import PatchTSTPredictor
+except ImportError:
+    PatchTSTPredictor = None
 
 # ===== 配置日志 =====
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -161,8 +173,9 @@ class DPPredictor:
                 self._is_lstm = True
                 X_arr = X.values.astype(np.float32)
                 y_arr = y_series.values.astype(np.float32)
-                sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
-                from models.lstm_model import LSTMPredictor
+                if LSTMPredictor is None:
+                    return False, "❌ LSTMPredictor 未正确加载，请检查安装", {}
+                self._lstm_model = LSTMPredictor()
                 self._lstm_model = LSTMPredictor()
                 p = params or {}
                 success, msg = self._lstm_model.train(
@@ -185,8 +198,9 @@ class DPPredictor:
                 self._is_patchtst = True
                 X_arr = X.values.astype(np.float32)
                 y_arr = y_series.values.astype(np.float32)
-                sys.path.insert(0, str(DEEP_PREDICT_PATH / "src"))
-                from models.patchtst_model import PatchTSTPredictor
+                if PatchTSTPredictor is None:
+                    return False, "❌ PatchTST 未正确加载，请检查安装（pip install prophet 或检查依赖）", {}
+                self._lstm_model = PatchTSTPredictor()
                 self._lstm_model = PatchTSTPredictor()
                 p = params or {}
                 success, msg = self._lstm_model.train(
@@ -638,14 +652,16 @@ def _build_deep_classify_ui():
         try:
             loader.select_target(target_col)
             X = loader.get_feature_matrix(exclude_cols=[target_col])
-            y, le = loader.get_target_encoded()
+            # y_enc = LabelEncoder 编码值（用于训练），y = 原始字符串标签（用于 metric 计算）
+            y_enc, le = loader.get_target_encoded()
+            y = loader.df[target_col].astype(str)  # 原始字符串标签
             class_names = list(le.classes_)
             info = (f"✅ 目标列: {target_col}\n"
                     f"类别: {class_names}\n"
                     f"特征数: {X.shape[1]} | 样本数: {len(X)}\n"
                     f"训练/测试: {(1-float(test_size)):.0%}/{float(test_size):.0%}")
             new_state = dict(state)
-            new_state.update({'X': X, 'y': y, 'y_enc': y, 'le': le,
+            new_state.update({'X': X, 'y': y, 'y_enc': y_enc, 'le': le,
                              'class_names': class_names})
             return info, new_state
         except Exception as e:
@@ -704,24 +720,23 @@ def _build_deep_classify_ui():
                 return f"❌ {msg}", "", "", None, None, state
 
             # 评估
+            # 使用原始标签（string）做 train/test split，确保与分类器返回的 string 标签类型一致
             X_arr = X.values.astype(np.float32)
-            y_arr = y_enc.values
+            y_str = y.values  # 原始 string 标签
             X_tr, X_te, y_tr, y_te = train_test_split(
-                X_arr, y_arr, test_size=float(test_size), random_state=42)
+                X_arr, y_str, test_size=float(test_size), random_state=42)
             y_pred = clf.predict(X_te)
             y_proba = clf.predict_proba(X_te)
 
             mc = ClassificationMetrics()
-            # y_te and y_pred are both numeric (LabelEncoder output and clf.predict output)
-            # → both are already 0/1/2 indices, no transform needed
-            y_te_num = np.array(y_te, dtype=int)
-            y_pred_num = np.array(y_pred, dtype=int)
+            # y_te 和 y_pred 都是原始 string 标签（分类器 inverse_transform 返回值）
+            # 注意：RF/GB/SVM 也返回 string 标签，所以 metric 计算直接用 string
             full_metrics = mc.compute(
-                y_true=y_te_num, y_pred=y_pred_num,
-                y_proba=y_proba, labels=list(range(len(class_names))))
+                y_true=np.array(y_te), y_pred=np.array(y_pred),
+                y_proba=y_proba, labels=class_names)
 
-            # 混淆矩阵（y_te 和 y_pred 都是数值索引，直接用 numeric）
-            cm = confusion_matrix(y_te_num, y_pred_num, labels=list(range(len(class_names))))
+            # 混淆矩阵（y_te 和 y_pred 都是原始标签，直接用 class_names 作为 labels）
+            cm = confusion_matrix(y_te, y_pred, labels=class_names)
             cm_rows = []
             cm_rows.append("<tr><th></th>" + "".join([f"<th>{l}</th>" for l in class_names]) + "</tr>")
             for i, row in enumerate(cm):
@@ -740,17 +755,19 @@ def _build_deep_classify_ui():
             metrics_html = f"<table style='border-collapse:collapse;width:100%'><caption><b>评估指标</b></caption>"
             metrics_html += "".join(m_rows) + "</table>"
 
-            # ROC 曲线
+            # ROC 曲线（y_te 现在是原始 string 标签）
             fig_roc, ax_roc = plt.subplots(figsize=(6, 5))
             if y_proba.shape[1] == 2:
-                fpr, tpr, _ = roc_curve(y_te, y_proba[:, 1])
+                # 二分类：用 class_names[1] 作为正类
+                fpr, tpr, _ = roc_curve((y_te == class_names[1]).astype(int), y_proba[:, 1])
                 roc_auc = auc(fpr, tpr)
                 ax_roc.plot(fpr, tpr, 'b-', lw=2, label=f'ROC (AUC={roc_auc:.3f})')
             else:
+                # 多分类：用 class_names[i] 作为第 i 类的二元标签
                 for i in range(min(y_proba.shape[1], 5)):
-                    fpr, tpr, _ = roc_curve((y_te == i).astype(int), y_proba[:, i])
+                    fpr, tpr, _ = roc_curve((y_te == class_names[i]).astype(int), y_proba[:, i])
                     roc_auc = auc(fpr, tpr)
-                    ax_roc.plot(fpr, tpr, lw=2, label=f'Class {i} (AUC={roc_auc:.3f})')
+                    ax_roc.plot(fpr, tpr, lw=2, label=f'Class {class_names[i]} (AUC={roc_auc:.3f})')
             ax_roc.plot([0,1],[0,1],'k--',lw=1)
             ax_roc.set_xlabel('FPR'); ax_roc.set_ylabel('TPR')
             ax_roc.set_title('ROC Curve'); ax_roc.legend(); ax_roc.grid(alpha=0.3)
@@ -898,6 +915,8 @@ def _build_deep_detect_ui():
     with gr.Row():
         dd_export_btn = gr.Button("📤 导出结果 CSV", variant="secondary")
         dd_export_file = gr.File(label="下载结果")
+        dd_download_plot_btn = gr.Button("📥 下载图表 PNG", variant="secondary")
+        dd_download_plot_file = gr.File(label="下载图表")
         dd_status = gr.Markdown("")
 
     # ===== 事件绑定 =====
@@ -1010,6 +1029,12 @@ def _build_deep_detect_ui():
             new_state.update({'detector': detector, 'X': X, 'labels': labels,
                              'scores': scores, 'threshold': threshold,
                              'eval_results': eval_results})
+
+            # 保存图表为 PNG 供下载
+            import tempfile as _tempfile, os as _os
+            _plot_path = _os.path.join(_tempfile.gettempdir(), f"dd_plot_{int(time.time())}.png")
+            fig.savefig(_plot_path, format='png', dpi=150, bbox_inches='tight')
+            new_state['plot_path'] = _plot_path
             return eval_results, fig, new_state, metrics_text
         except Exception as e:
             import traceback
@@ -1047,6 +1072,15 @@ def _build_deep_detect_ui():
             return None, f"❌ 导出失败: {str(e)}\n{traceback.format_exc()}"
 
     dd_export_btn.click(dd_on_export, inputs=[dd_state], outputs=[dd_export_file, dd_status])
+
+    def dd_on_download_plot(state):
+        plot_path = state.get('plot_path')
+        if not plot_path or not os.path.exists(plot_path):
+            return None, "❌ 请先运行检测生成图表"
+        return plot_path, f"✅ 图表已保存"
+
+    dd_download_plot_btn.click(dd_on_download_plot, inputs=[dd_state],
+                              outputs=[dd_download_plot_file, dd_status])
 
     return dd_state
 
